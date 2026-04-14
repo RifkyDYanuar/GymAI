@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/dashboardFragment">
+
+    <fragment
+        android:id="@+id/dashboardFragment"
+        android:name="com.modul.gymai.antarmuka.DashboardFragment"
+        android:label="Dashboard"
+        tools:layout="@layout/fragment_dashboard" >
+        <action
+            android:id="@+id/action_latihan_to_detail"
+            app:destination="@id/detailLatihanFragment" />
+        <action
+            android:id="@+id/action_exercise_to_detection"
+            app:destination="@id/deteksiFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/berandaFragment"
+        android:name="com.modul.gymai.antarmuka.beranda.BerandaFragment"
+        android:label="Home"
+        tools:layout="@layout/fragment_beranda" />
+
+    <fragment
+        android:id="@+id/latihanFragment"
+        android:name="com.modul.gymai.antarmuka.latihan.LatihanFragment"
+        android:label="Exercise"
+        tools:layout="@layout/fragment_latihan">
+        <action
+            android:id="@+id/action_latihan_to_detail"
+            app:destination="@id/detailLatihanFragment" />
+        <action
+            android:id="@+id/action_exercise_to_detection"
+            app:destination="@id/deteksiFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/detailLatihanFragment"
+        android:name="com.modul.gymai.antarmuka.latihan.DetailLatihanFragment"
+        android:label="Detail"
+        tools:layout="@layout/fragment_detail_latihan">
+
+        <argument
+            android:name="exercise_id"
+            app:argType="string"
+            android:defaultValue="1" />
+
+        <action
+            android:id="@+id/action_detail_to_detection"
+            app:destination="@id/deteksiFragment" />
+
+    </fragment>
+
+    <fragment
+        android:id="@+id/panduanFragment"
+        android:name="com.modul.gymai.antarmuka.panduan.PanduanFragment"
+        android:label="Guide"
+        tools:layout="@layout/fragment_panduan" />
+
+    <fragment
+        android:id="@+id/riwayatFragment"
+        android:name="com.modul.gymai.antarmuka.riwayat.RiwayatFragment"
+        android:label="History"
+        tools:layout="@layout/fragment_riwayat" />
+
+    <fragment
+        android:id="@+id/infoFragment"
+        android:name="com.modul.gymai.antarmuka.info.InfoFragment"
+        android:label="Info"
+        tools:layout="@layout/fragment_info" />
+
+    <fragment
+        android:id="@+id/deteksiFragment"
+        android:name="com.modul.gymai.antarmuka.deteksi.DeteksiFragment"
+        android:label="Detection"
+        tools:layout="@layout/fragment_deteksi">
+
+        <!-- Exercise type passed as string, defaults to SQUAT -->
+        <argument
+            android:name="exerciseType"
+            app:argType="string"
+            android:defaultValue="SQUAT" />
+
+    </fragment>
+
+</navigation>

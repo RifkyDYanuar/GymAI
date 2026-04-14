@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GymAI</string>
+    <string name="nav_home">Beranda</string>
+    <string name="nav_exercise">Evaluasi</string>
+    <string name="nav_guide">Panduan</string>
+    <string name="nav_history">Riwayat</string>
+    <string name="nav_profile">Info</string>
+
+    <!-- Detection Screen -->
+    <string name="detection_title">Squat Detection</string>
+    <string name="label_benar">BENAR</string>
+    <string name="label_salah">SALAH</string>
+    <string name="btn_stop">Selesai</string>
+    <string name="btn_start">Mulai</string>
+    <string name="reps_label">Repetisi</string>
+    <string name="confidence_label">Akurasi</string>
+    <string name="feedback_waiting">Posisikan diri di depan kamera</string>
+    <string name="feedback_benar">Posisi squat sudah benar!</string>
+    <string name="feedback_salah_lutut">Tekuk lutut lebih dalam (&lt;90°)</string>
+    <string name="feedback_salah_punggung">Jaga punggung tetap lurus</string>
+    <string name="feedback_salah_pinggul">Pinggul sejajar lutut</string>
+    <string name="feedback_salah_tumit">Jaga tumit tetap di lantai</string>
+    <string name="initializing_camera">Menginisialisasi kamera...</string>
+
+    <!-- Home Screen -->
+    <string name="greeting">Selamat Datang!</string>
+    <string name="home_subtitle">Mulai latihan squat Anda hari ini</string>
+    <string name="start_detection">Mulai Deteksi</string>
+    <string name="view_history">Lihat Riwayat</string>
+    <string name="today_target">Target Hari Ini</string>
+
+    <!-- Guide Screen -->
+    <string name="guide_title">Panduan Squat</string>
+    <string name="guide_step1_title">Posisi Awal</string>
+    <string name="guide_step1_desc">Berdiri tegak dengan kaki selebar bahu, jari kaki sedikit mengarah keluar</string>
+    <string name="guide_step2_title">Turunkan Tubuh</string>
+    <string name="guide_step2_desc">Tekuk lutut dan pinggul secara bersamaan, jaga punggung tetap lurus</string>
+    <string name="guide_step3_title">Posisi Bawah</string>
+    <string name="guide_step3_desc">Paha sejajar lantai, lutut tidak melewati ujung kaki, tumit tetap di lantai</string>
+    <string name="guide_step4_title">Kembali ke Atas</string>
+    <string name="guide_step4_desc">Dorong dari tumit, luruskan kaki, kembali ke posisi awal</string>
+
+    <!-- History Screen -->
+    <string name="history_title">Riwayat Latihan</string>
+    <string name="history_empty">Belum ada riwayat latihan</string>
+    <string name="total_reps">Total Repetisi</string>
+    <string name="accuracy_avg">Rata-rata Akurasi</string>
+
+    <!-- Profile Screen -->
+    <string name="profile_title">Profil</string>
+    <string name="settings">Pengaturan</string>
+
+    <!-- Exercise Screen -->
+    <string name="exercise_title">Program Latihan</string>
+    <string name="exercise_squat">Squat</string>
+    <string name="exercise_desc">Latihan untuk kekuatan kaki dan inti tubuh</string>
+    <string name="exercise_muscle">Otot: Paha, Bokong, Betis</string>
+    <string name="difficulty_beginner">Pemula</string>
+    <string name="difficulty_intermediate">Menengah</string>
+    <string name="difficulty_advanced">Lanjutan</string>
+
+    <string name="permission_camera_required">Izin kamera diperlukan untuk deteksi pose</string>
+    <string name="permission_denied">Izin ditolak. Aktifkan di pengaturan.</string>
+</resources>

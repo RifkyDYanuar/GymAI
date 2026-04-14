@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#C1121F</color>
+    <color name="primary_dark">#8B0000</color>
+    <color name="primary_light">#FF3D3D</color>
+    <color name="accent">#FF6B35</color>
+    <color name="background">#F8F9FA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#F1F3F5</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="on_background">#1A1A2E</color>
+    <color name="on_surface">#212529</color>
+    <color name="text_secondary">#6C757D</color>
+    <color name="success">#22C55E</color>
+    <color name="error">#EF4444</color>
+    <color name="warning">#F59E0B</color>
+    <color name="divider">#E9ECEF</color>
+    <color name="card_shadow">#1A000000</color>
+    <color name="overlay_bg">#CC000000</color>
+    <color name="skeleton_green">#22C55E</color>
+    <color name="skeleton_red">#EF4444</color>
+    <color name="skeleton_point">#FF6B35</color>
+    <color name="nav_selected">#C1121F</color>
+    <color name="nav_unselected">#9E9E9E</color>
+    <color name="gradient_start">#C1121F</color>
+    <color name="gradient_end">#8B0000</color>
+    <color name="white">#FFFFFF</color>
+    <color name="white_60">#99FFFFFF</color>
+    <color name="white_70">#B3FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>
