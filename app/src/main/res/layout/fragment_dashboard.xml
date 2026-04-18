@@ -4,26 +4,64 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/background">
+    android:background="@color/background"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
+    <!-- ViewPager: fills all space above the nav bar -->
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/view_pager"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottom_nav"
+    <!-- Navigation Container -->
+    <!-- clipChildren=false allows FAB to float above this container boundary -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_bottom_nav"
-        app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@drawable/nav_color_selector"
-        app:itemTextColor="@drawable/nav_color_selector"
-        app:labelVisibilityMode="labeled"
-        app:itemRippleColor="@android:color/transparent"
-        app:itemActiveIndicatorStyle="@style/Gym.BottomNav.ActiveIndicator"
-        android:elevation="16dp"
-        android:translationZ="8dp" />
+        android:background="@color/white"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:elevation="8dp">
+
+        <!-- Divider line -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider"
+            android:layout_gravity="top" />
+
+        <!-- Bottom Navigation -->
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottom_nav"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:background="@android:color/transparent"
+            app:elevation="0dp"
+            app:menu="@menu/bottom_nav_menu"
+            app:itemIconTint="@drawable/nav_color_selector"
+            app:itemTextColor="@drawable/nav_color_selector"
+            app:labelVisibilityMode="labeled"
+            app:itemRippleColor="@android:color/transparent"
+            app:itemActiveIndicatorStyle="@style/Gym.BottomNav.ActiveIndicator" />
+
+        <!-- FAB: floating above nav bar center -->
+        <!-- clipChildren=false on parent allows this to draw above FrameLayout bounds -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_evaluasi"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="top|center_horizontal"
+            android:src="@drawable/ic_nav_exercise"
+            android:translationY="-24dp"
+            app:tint="@color/white"
+            app:backgroundTint="@color/primary"
+            app:maxImageSize="26dp"
+            app:elevation="12dp"
+            android:contentDescription="Evaluasi Gym" />
+
+    </FrameLayout>
 
 </LinearLayout>

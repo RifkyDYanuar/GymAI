@@ -31,8 +31,6 @@ class RecentActivityAdapter : ListAdapter<WorkoutSession, RecentActivityAdapter.
             binding.tvRecentExerciseName.text = formatExerciseName(session.exerciseType)
             binding.tvRecentExerciseReps.text = "${session.totalReps} Reps"
             
-            val accuracyPct = (session.averageConfidence * 100).toInt()
-            binding.tvRecentExerciseAccuracy.text = "$accuracyPct% akurasi"
             
             binding.tvRecentExerciseTime.text = getRelativeTime(session.timestamp)
 

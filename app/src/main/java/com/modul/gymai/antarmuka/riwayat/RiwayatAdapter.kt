@@ -49,9 +49,6 @@ class RiwayatAdapter : ListAdapter<WorkoutSession, RiwayatAdapter.HistoryViewHol
             val seconds = session.durationSeconds % 60
             binding.tvSessionDuration.text = String.format("%02d:%02d", minutes, seconds)
 
-            // Accuracy
-            val accuracyPct = (session.averageConfidence * 100).toInt()
-            binding.tvSessionAccuracy.text = "$accuracyPct%"
             
             // Icon mapping
             val iconRes = when (session.exerciseType) {
@@ -71,12 +68,6 @@ class RiwayatAdapter : ListAdapter<WorkoutSession, RiwayatAdapter.HistoryViewHol
                 binding.layoutFeedback.visibility = View.GONE
             }
 
-            // Accuracy Color
-            binding.tvSessionAccuracy.setTextColor(
-                if (accuracyPct >= 80) context.getColor(R.color.success)
-                else if (accuracyPct >= 60) context.getColor(R.color.warning)
-                else context.getColor(R.color.error)
-            )
 
             // Delete click
             binding.btnDeleteHistory.setOnClickListener {

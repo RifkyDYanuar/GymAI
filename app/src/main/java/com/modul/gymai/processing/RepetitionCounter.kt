@@ -3,149 +3,96 @@ package com.modul.gymai.processing
 import com.modul.gymai.pose.PoseResult
 
 /**
- * Exercise-aware repetition counter menggunakan state machine UP ↔ DOWN.
- *
- * Setiap jenis gerakan memiliki threshold angle yang berbeda:
- *
- *   SQUAT:
- *     sudut lutut < 100° → DOWN, > 150° → UP
- *
- *   BICEP_CURL:
- *     sudut siku < 60° → DOWN (kontraksi penuh), > 140° → UP (lengan lurus)
- *
- *   LATERAL_RAISE:
- *     level abduksi > 0.75 → UP (lengan sejajar bahu), < 0.25 → DOWN
- *
- *   SHOULDER_PRESS:
- *     rata-rata sudut siku > 160° → UP (lengan lurus ke atas), < 110° → DOWN
+ * Exercise-aware repetition counter using an UP ↔ DOWN state machine.
+ * 
+ * Simplified to receive the calculated biometric value (angle or level) 
+ * directly from the detection pipeline.
  */
 class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQUAT) {
 
     enum class PhaseState { UP, DOWN }
 
     companion object {
-        // SQUAT thresholds (sudut lutut)
-        private const val SQUAT_DOWN_THRESHOLD = 100f
-        private const val SQUAT_UP_THRESHOLD   = 150f
+        // Thresholds consistent with Rule Engines
+        
+        // SQUAT (Knee Angle): DOWN < 130 (easier trigger), UP > 165
+        private const val SQUAT_DOWN_THRESHOLD = 130f
+        private const val SQUAT_UP_THRESHOLD   = 165f
 
-        // BICEP_CURL thresholds (sudut siku)
-        private const val CURL_DOWN_THRESHOLD = 65f   // siku tertekuk = DOWN
-        private const val CURL_UP_THRESHOLD   = 140f  // lengan hampir lurus = UP
+        // BICEP_CURL (Elbow Angle): DOWN < 65 (Strict peak), UP > 155
+        private const val CURL_DOWN_THRESHOLD = 65f
+        private const val CURL_UP_THRESHOLD   = 150f
 
-        // LATERAL_RAISE thresholds (abduksi level 0.0–1.0)
-        private const val RAISE_UP_THRESHOLD   = 0.70f  // lengan mencapai ketinggian bahu
-        private const val RAISE_DOWN_THRESHOLD = 0.25f  // lengan kembali ke bawah
+        // LATERAL_RAISE (Shoulder Angle): UP > 70, DOWN < 30
+        private const val RAISE_UP_THRESHOLD   = 70f
+        private const val RAISE_DOWN_THRESHOLD = 30f
 
-        // SHOULDER_PRESS thresholds (sudut siku rata-rata)
-        private const val PRESS_UP_THRESHOLD   = 155f   // lengan lurus ke atas
-        private const val PRESS_DOWN_THRESHOLD = 110f   // siku kembali ~90°
+        // SHOULDER_PRESS (Avg Elbow Angle): UP > 150, DOWN < 110
+        private const val PRESS_UP_THRESHOLD   = 155f
+        private const val PRESS_DOWN_THRESHOLD = 110f
     }
-
-    // Rule engines — inisialisasi lazy sesuai exercise type
-    private val squatEngine    by lazy { SquatRuleEngine() }
-    private val curlEngine     by lazy { BicepCurlRuleEngine() }
-    private val raiseEngine    by lazy { LateralRaiseRuleEngine() }
-    private val pressEngine    by lazy { ShoulderPressRuleEngine() }
 
     private var currentState: PhaseState = PhaseState.UP
     private var repCount: Int = 0
-    private var lastValue: Float = 0f   // sudut atau level tergantung exercise
+    private var lastValue: Float = 0f
 
     /**
-     * Update state machine dengan pose terbaru.
-     * @return true jika satu repetisi baru selesai.
+     * Process a new frame with its calculated biomechanical value.
      */
-    fun update(pose: PoseResult?): Boolean {
-        if (pose == null || !pose.isValid()) return false
-
-        val value = extractValue(pose)
+    fun onNewFrame(pose: PoseResult, value: Float) {
+        if (!pose.isValid()) return
+        
         lastValue = value
 
-        return when (exerciseType) {
-            ExerciseType.SQUAT -> updateAngleBased(
-                value, SQUAT_DOWN_THRESHOLD, SQUAT_UP_THRESHOLD,
-                valueAtDown = false  // sudut kecil = DOWN
-            )
-            ExerciseType.BICEP_CURL -> updateAngleBased(
-                value, CURL_DOWN_THRESHOLD, CURL_UP_THRESHOLD,
-                valueAtDown = false  // sudut kecil = DOWN (siku tekuk)
-            )
-            ExerciseType.LATERAL_RAISE -> updateLevelBased(
-                value, RAISE_UP_THRESHOLD, RAISE_DOWN_THRESHOLD
-            )
-            ExerciseType.SHOULDER_PRESS -> updateAngleBased(
-                value, PRESS_DOWN_THRESHOLD, PRESS_UP_THRESHOLD,
-                valueAtDown = true   // sudut kecil = DOWN (siku tekuk di bawah)
-            )
+        when (exerciseType) {
+            ExerciseType.SQUAT -> updateSquat(value)
+            ExerciseType.BICEP_CURL -> updateBicepCurl(value)
+            ExerciseType.LATERAL_RAISE -> updateLateralRaise(value)
+            ExerciseType.SHOULDER_PRESS -> updateShoulderPress(value)
         }
     }
 
-    /**
-     * Untuk gerakan berbasis SUDUT (squat, curl, press):
-     *   valueAtDown = false → sudut kecil berarti DOWN (squat, curl)
-     *   valueAtDown = true  → sudut kecil berarti UP, besar berarti DOWN (press: siku kecil = posisi awal)
-     *
-     * Satu rep: DOWN → UP → DOWN (terhitung saat kembali ke UP)
-     * Lebih tepatnya: dimulai UP, masuk DOWN, kembali UP = +1 rep
-     */
-    private fun updateAngleBased(
-        angle: Float,
-        downThreshold: Float,
-        upThreshold: Float,
-        valueAtDown: Boolean
-    ): Boolean {
-        val isDown = if (valueAtDown) angle < downThreshold else angle < downThreshold
-        val isUp   = if (valueAtDown) angle > upThreshold   else angle > upThreshold
-
-        return when (currentState) {
-            PhaseState.UP -> {
-                if (isDown) currentState = PhaseState.DOWN
-                false
-            }
-            PhaseState.DOWN -> {
-                if (isUp) {
-                    currentState = PhaseState.UP
-                    repCount++
-                    true
-                } else false
+    private fun updateSquat(angle: Float) {
+        when (currentState) {
+            PhaseState.UP -> if (angle < SQUAT_DOWN_THRESHOLD) currentState = PhaseState.DOWN
+            PhaseState.DOWN -> if (angle > SQUAT_UP_THRESHOLD) {
+                currentState = PhaseState.UP
+                repCount++
             }
         }
     }
 
-    /**
-     * Untuk gerakan berbasis LEVEL (lateral raise: 0.0 = bawah, 1.0 = atas):
-     * UP = level tinggi (lengan terangkat)
-     * DOWN = level rendah (lengan di bawah)
-     * Satu rep: DOWN → UP → DOWN (dihitung saat kembali DOWN)
-     */
-    private fun updateLevelBased(
-        level: Float,
-        upThreshold: Float,
-        downThreshold: Float
-    ): Boolean {
-        return when (currentState) {
-            PhaseState.UP -> {
-                if (level < downThreshold) {
-                    currentState = PhaseState.DOWN
-                    repCount++
-                    true
-                } else false
-            }
-            PhaseState.DOWN -> {
-                if (level > upThreshold) {
-                    currentState = PhaseState.UP
-                }
-                false
+    private fun updateBicepCurl(angle: Float) {
+        when (currentState) {
+            PhaseState.UP -> if (angle < CURL_DOWN_THRESHOLD) currentState = PhaseState.DOWN
+            PhaseState.DOWN -> if (angle > CURL_UP_THRESHOLD) {
+                currentState = PhaseState.UP
+                repCount++
             }
         }
     }
 
-    /** Ekstrak nilai pengukuran yang relevan dari pose sesuai exercise type. */
-    private fun extractValue(pose: PoseResult): Float = when (exerciseType) {
-        ExerciseType.SQUAT         -> squatEngine.computeKneeAngle(pose)
-        ExerciseType.BICEP_CURL    -> curlEngine.computeElbowAngle(pose)
-        ExerciseType.LATERAL_RAISE -> raiseEngine.computeAbductionLevel(pose)
-        ExerciseType.SHOULDER_PRESS -> pressEngine.computeAvgElbowAngle(pose)
+    private fun updateLateralRaise(angle: Float) {
+        // UP = arm raised high
+        when (currentState) {
+            PhaseState.DOWN -> if (angle > RAISE_UP_THRESHOLD) currentState = PhaseState.UP
+            PhaseState.UP -> if (angle < RAISE_DOWN_THRESHOLD) {
+                currentState = PhaseState.DOWN
+                repCount++
+            }
+        }
+    }
+
+    private fun updateShoulderPress(angle: Float) {
+        // UP = arms pushed high (large angle)
+        // DOWN = arms at starting pos (small angle ~90)
+        when (currentState) {
+            PhaseState.DOWN -> if (angle > PRESS_UP_THRESHOLD) currentState = PhaseState.UP
+            PhaseState.UP -> if (angle < PRESS_DOWN_THRESHOLD) {
+                currentState = PhaseState.DOWN
+                repCount++
+            }
+        }
     }
 
     fun getRepCount(): Int = repCount
@@ -154,7 +101,12 @@ class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQ
 
     fun reset() {
         repCount = 0
-        currentState = PhaseState.UP
+        // Initial state depends on exercise type (rest position)
+        currentState = when (exerciseType) {
+            ExerciseType.LATERAL_RAISE -> PhaseState.DOWN
+            ExerciseType.SHOULDER_PRESS -> PhaseState.DOWN
+            else -> PhaseState.UP
+        }
         lastValue = 0f
     }
 }

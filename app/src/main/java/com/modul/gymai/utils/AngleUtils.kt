@@ -30,7 +30,7 @@ object AngleUtils {
 
     /**
      * Calculate vertical angle of a vector from (x1,y1) to (x2,y2).
-     * 0° = pointing up, 90° = horizontal.
+     * 0° = pointing up, 90° = horizontal.ga
      */
     fun verticalAngle(x1: Float, y1: Float, x2: Float, y2: Float): Float {
         val dx = x2 - x1

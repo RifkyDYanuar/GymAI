@@ -30,90 +30,82 @@ import com.modul.gymai.utils.AngleUtils
 class BicepCurlRuleEngine {
 
     companion object {
-        private const val MIN_CONF = 0.4f
-
-        // Sudut siku saat DOWN: harus lebih besar dari ini (lengan hampir lurus)
-        private const val ELBOW_DOWN_MIN_ANGLE = 140f
-
-        // Sudut siku saat UP: harus lebih kecil dari ini (curl penuh)
-        private const val ELBOW_UP_MAX_ANGLE = 70f
-
-        // Toleransi pergeseran bahu ke atas (delta y, koordinat dinormalisasi 0-1)
-        // Semakin kecil y = semakin ke atas di layar (y bertambah ke bawah)
-        // Jika bahu naik, yBahu mengecil → kita cek perubahan tidak > threshold
-        private const val SHOULDER_SWING_THRESHOLD = 0.06f
-
-        // Toleransi pergeseran siku horizontal (x) — cegah siku maju terlalu jauh
-        private const val ELBOW_SWING_THRESHOLD = 0.10f
+        private const val MIN_CONF = 0.45f
+        
+        // Peaks based on rule-based data provided by user
+        private const val ELBOW_PEAK_MIN = 35f
+        private const val ELBOW_PEAK_MAX = 65f
+        private const val ELBOW_PEAK_LIMIT = 70f // Condition Salah if > 70
+        
+        private const val TORSO_STABILITY_THRESHOLD = 10f // Torso deviation <= 10
     }
 
     data class RuleResult(
         val isValid: Boolean,
         val feedback: String,
-        val elbowAngle: Float = 0f
+        val elbowAngle: Float = 0f,
+        val torsoAngle: Float = 0f
     )
-
-    // Referensi posisi bahu dan siku saat mulai (untuk cek stabilitas)
-    private var refShoulderY: Float = -1f
-    private var refElbowX: Float = -1f
-    private var isRefSet: Boolean = false
 
     /**
      * Validasi pose bicep curl pada frame saat ini.
      */
     fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
-            return RuleResult(false, "Pose tidak terdeteksi — posisikan tubuh dari samping")
+            return RuleResult(false, "Pastikan tubuh terlihat jelas di kamera")
         }
 
         val kp = pose.keypoints
+        val lShoulder = kp[Keypoint.LEFT_SHOULDER]
+        val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
 
-        // Ambil keypoints sisi kanan (lebih visible dari kamera samping kanan)
-        // Fallback ke sisi kiri jika sisi kanan tidak confident
-        val (shoulder, elbow, wrist) = pickBestArm(kp) ?: run {
-            return RuleResult(false, "Pastikan lengan terlihat jelas dari samping")
+        // ORIENTATION CHECK: Bicep Curl must be from the side.
+        // If both shoulders are highly visible and separated, it's a front view.
+        val shoulderDist = Math.abs(lShoulder.x - rShoulder.x)
+        if (lShoulder.confidence > 0.5f && rShoulder.confidence > 0.5f && shoulderDist > 0.15f) {
+            return RuleResult(false, "Harus menghadap ke samping", 0f, 0f)
         }
 
-        // Hitung sudut siku: Shoulder → Elbow → Wrist
+        // Bicep curl usually tracked from side, but can be front. 
+        // We pick the best arm.
+        val (shoulder, elbow, wrist) = pickBestArm(kp) ?: run {
+            return RuleResult(false, "Lengan tidak terdeteksi")
+        }
+
+        // 1. Calculate Elbow Angle
         val elbowAngle = AngleUtils.angleBetween(
             shoulder.x, shoulder.y,
             elbow.x, elbow.y,
             wrist.x, wrist.y
         )
 
-        // Set referensi saat pertama kali terbaca valid
-        if (!isRefSet) {
-            refShoulderY = shoulder.y
-            refElbowX = elbow.x
-            isRefSet = true
-        }
+        // 2. Calculate Torso Deviation (Shoulder to Hip angle relative to vertical)
+        val lHip = kp[Keypoint.LEFT_HIP]
+        val rHip = kp[Keypoint.RIGHT_HIP]
+        val torsoAngle = if (lHip.confidence > MIN_CONF && rHip.confidence > MIN_CONF) {
+            val midShoulderX = (kp[Keypoint.LEFT_SHOULDER].x + kp[Keypoint.RIGHT_SHOULDER].x) / 2f
+            val midShoulderY = (kp[Keypoint.LEFT_SHOULDER].y + kp[Keypoint.RIGHT_SHOULDER].y) / 2f
+            val midHipX = (lHip.x + rHip.x) / 2f
+            val midHipY = (lHip.y + rHip.y) / 2f
+            AngleUtils.verticalAngle(midHipX, midHipY, midShoulderX, midShoulderY)
+        } else 0f
 
-        // Rule 1: Cek elevasi bahu (tidak boleh berayun ke atas)
-        val shoulderDeltaY = refShoulderY - shoulder.y // positif = bahu naik
-        if (shoulderDeltaY > SHOULDER_SWING_THRESHOLD) {
-            return RuleResult(false, "Jaga bahu tetap diam, jangan diangkat saat mengangkat beban", elbowAngle)
-        }
-
-        // Rule 2: Cek pergeseran siku horizontal (siku tidak boleh maju berlebihan)
-        val elbowDeltaX = kotlin.math.abs(elbow.x - refElbowX)
-        if (elbowDeltaX > ELBOW_SWING_THRESHOLD) {
-            return RuleResult(false, "Jaga siku tetap di sisi tubuh, jangan diayunkan ke depan", elbowAngle)
-        }
-
-        // Rule 3: Feedback posisi berdasarkan fase
-        return when {
-            elbowAngle > ELBOW_DOWN_MIN_ANGLE -> {
-                // Fase DOWN — siap angkat
-                RuleResult(true, "Siap: tekuk siku dan angkat beban", elbowAngle)
-            }
-            elbowAngle < ELBOW_UP_MAX_ANGLE -> {
-                // Fase UP — sudah curl penuh
-                RuleResult(true, "Bagus! Kembali turunkan perlahan", elbowAngle)
-            }
-            else -> {
-                // Fase tengah — sedang bergerak
-                RuleResult(true, "Teruskan gerakan curl dengan kontrol", elbowAngle)
-            }
+        // Validation Logic
+        val isTorsoStable = torsoAngle <= TORSO_STABILITY_THRESHOLD
+        
+        // We evaluate based on the "puncak" (contraction) phase
+        // If the user is in the contraction phase but doesn't reach the goal:
+        return if (elbowAngle < 90f) { // In contraction phase
+             if (elbowAngle in ELBOW_PEAK_MIN..ELBOW_PEAK_MAX && isTorsoStable) {
+                 RuleResult(true, "Fleksi siku optimal dan tubuh stabil", elbowAngle, torsoAngle)
+             } else {
+                 val feedback = if (!isTorsoStable) "Jaga tubuh tetap tegak" 
+                               else "Angkat beban lebih tinggi"
+                 RuleResult(false, feedback, elbowAngle, torsoAngle)
+             }
+        } else {
+            // Extension phase or starting
+            RuleResult(true, "Lakukan gerakan curl...", elbowAngle, torsoAngle)
         }
     }
 
@@ -155,10 +147,7 @@ class BicepCurlRuleEngine {
         }
     }
 
-    /** Reset referensi posisi (panggil saat mulai sesi baru) */
+    /** Reset state (none for this rulebased approach) */
     fun reset() {
-        refShoulderY = -1f
-        refElbowX = -1f
-        isRefSet = false
     }
 }

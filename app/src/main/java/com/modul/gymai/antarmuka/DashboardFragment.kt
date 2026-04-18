@@ -9,9 +9,9 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.modul.gymai.R
 import com.modul.gymai.antarmuka.beranda.BerandaFragment
-import com.modul.gymai.antarmuka.latihan.LatihanFragment
-import com.modul.gymai.antarmuka.panduan.PanduanFragment // actually it's riwayat and profil
 import com.modul.gymai.antarmuka.info.InfoFragment
+import com.modul.gymai.antarmuka.latihan.LatihanFragment
+import com.modul.gymai.antarmuka.panduan.PanduanFragment
 import com.modul.gymai.antarmuka.riwayat.RiwayatFragment
 import com.modul.gymai.databinding.FragmentDashboardBinding
 import kotlin.math.abs
@@ -39,12 +39,11 @@ class DashboardFragment : Fragment() {
         // Add zoom out animation
         binding.viewPager.setPageTransformer(ZoomOutPageTransformer())
 
-        // Disable swipe if needed? No, user explicitly wants swipe.
-
         // Sync ViewPager changes to BottomNavigationView
         binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
+                // Direct mapping 1:1 since ViewPager now has 5 items matching Menu
                 binding.bottomNav.menu.getItem(position).isChecked = true
             }
         })
@@ -53,11 +52,17 @@ class DashboardFragment : Fragment() {
         binding.bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.berandaFragment -> binding.viewPager.setCurrentItem(0, true)
-                R.id.latihanFragment -> binding.viewPager.setCurrentItem(1, true)
-                R.id.riwayatFragment -> binding.viewPager.setCurrentItem(2, true)
-                R.id.infoFragment -> binding.viewPager.setCurrentItem(3, true)
+                R.id.riwayatFragment -> binding.viewPager.setCurrentItem(1, true)
+                R.id.placeholder -> binding.viewPager.setCurrentItem(2, true)
+                R.id.panduanFragment -> binding.viewPager.setCurrentItem(3, true)
+                R.id.infoFragment -> binding.viewPager.setCurrentItem(4, true)
             }
             true
+        }
+
+        // FAB Click Listener - Open Latihan Selection (Page 2)
+        binding.fabEvaluasi.setOnClickListener {
+            binding.viewPager.setCurrentItem(2, true)
         }
     }
 
@@ -67,14 +72,15 @@ class DashboardFragment : Fragment() {
     }
 
     private inner class DashboardPagerAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) {
-        override fun getItemCount(): Int = 4
+        override fun getItemCount(): Int = 5
 
         override fun createFragment(position: Int): Fragment {
             return when (position) {
                 0 -> BerandaFragment()
-                1 -> LatihanFragment()
-                2 -> RiwayatFragment()
-                3 -> InfoFragment()
+                1 -> RiwayatFragment()
+                2 -> LatihanFragment() // For Evaluasi
+                3 -> PanduanFragment() // New Panduan with exercise selection + modal
+                4 -> InfoFragment()
                 else -> throw IllegalArgumentException("Invalid position $position")
             }
         }

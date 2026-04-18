@@ -5,13 +5,17 @@
         android:icon="@drawable/ic_nav_home"
         android:title="Beranda" />
     <item
-        android:id="@+id/latihanFragment"
-        android:icon="@drawable/ic_nav_exercise"
-        android:title="Evaluasi" />
-    <item
         android:id="@+id/riwayatFragment"
         android:icon="@drawable/ic_nav_history"
         android:title="Riwayat" />
+    <item
+        android:id="@+id/placeholder"
+        android:title=""
+        android:enabled="false" />
+    <item
+        android:id="@+id/panduanFragment"
+        android:icon="@drawable/ic_nav_guide"
+        android:title="Panduan" />
     <item
         android:id="@+id/infoFragment"
         android:icon="@drawable/ic_info_circle"

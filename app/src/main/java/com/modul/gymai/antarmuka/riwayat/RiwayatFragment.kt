@@ -101,10 +101,6 @@ class RiwayatFragment : Fragment() {
         viewModel.totalReps.observe(viewLifecycleOwner) { reps ->
             binding.tvTotalRepsAll.text = reps.toString()
         }
-
-        viewModel.avgAccuracy.observe(viewLifecycleOwner) { acc ->
-            binding.tvAvgAccuracy.text = "${(acc * 100).toInt()}%"
-        }
     }
 
     override fun onDestroyView() {

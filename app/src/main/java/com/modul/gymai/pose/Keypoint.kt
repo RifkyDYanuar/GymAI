@@ -10,61 +10,53 @@ data class Keypoint(
     val confidence: Float
 ) {
     companion object {
-        // Custom 17-keypoint mapping from image
-        const val BOTTOM_TORSO = 0
-        const val LEFT_HIP = 1
-        const val LEFT_KNEE = 2
-        const val LEFT_FOOT = 3  // Ankle/Foot
-        const val RIGHT_HIP = 4
-        const val RIGHT_KNEE = 5
-        const val RIGHT_FOOT = 6 // Ankle/Foot
-        const val CENTER_TORSO = 7
-        const val UPPER_TORSO = 8
-        const val NECK_BASE = 9
-        const val CENTER_HEAD = 10
-        const val RIGHT_SHOULDER = 11
-        const val RIGHT_ELBOW = 12
-        const val RIGHT_HAND = 13 // Wrist/Hand
-        const val LEFT_SHOULDER = 14
-        const val LEFT_ELBOW = 15
-        const val LEFT_HAND = 16 // Wrist/Hand
+        // Standard COCO 17-keypoint mapping for YOLOv8-Pose
+        const val NOSE = 0
+        const val LEFT_EYE = 1
+        const val RIGHT_EYE = 2
+        const val LEFT_EAR = 3
+        const val RIGHT_EAR = 4
+        const val LEFT_SHOULDER = 5
+        const val RIGHT_SHOULDER = 6
+        const val LEFT_ELBOW = 7
+        const val RIGHT_ELBOW = 8
+        const val LEFT_WRIST = 9
+        const val RIGHT_WRIST = 10
+        const val LEFT_HIP = 11
+        const val RIGHT_HIP = 12
+        const val LEFT_KNEE = 13
+        const val RIGHT_KNEE = 14
+        const val LEFT_ANKLE = 15
+        const val RIGHT_ANKLE = 16
 
-        // Aliases for compatibility with legacy rule names if needed
-        const val LEFT_ANKLE = LEFT_FOOT
-        const val RIGHT_ANKLE = RIGHT_FOOT
-        const val LEFT_WRIST = LEFT_HAND
-        const val RIGHT_WRIST = RIGHT_HAND
+        // Aliases for skeletal joints
+        const val LEFT_FOOT = LEFT_ANKLE
+        const val RIGHT_FOOT = RIGHT_ANKLE
+        const val LEFT_HAND = LEFT_WRIST
+        const val RIGHT_HAND = RIGHT_WRIST
 
         val SKELETON_CONNECTIONS = listOf(
-            // Spine & Head
-            Pair(CENTER_HEAD, NECK_BASE),
-            Pair(NECK_BASE, UPPER_TORSO),
-            Pair(UPPER_TORSO, CENTER_TORSO),
-            Pair(CENTER_TORSO, BOTTOM_TORSO),
+            // Face
+            Pair(LEFT_EYE, NOSE), Pair(RIGHT_EYE, NOSE),
+            Pair(LEFT_EAR, LEFT_EYE), Pair(RIGHT_EAR, RIGHT_EYE),
             
-            // Shoulders to Spine
-            Pair(LEFT_SHOULDER, UPPER_TORSO),
-            Pair(RIGHT_SHOULDER, UPPER_TORSO),
+            // Torso
+            Pair(LEFT_SHOULDER, RIGHT_SHOULDER),
+            Pair(LEFT_SHOULDER, LEFT_HIP),
+            Pair(RIGHT_SHOULDER, RIGHT_HIP),
+            Pair(LEFT_HIP, RIGHT_HIP),
             
-            // Left arm
+            // Arms
             Pair(LEFT_SHOULDER, LEFT_ELBOW),
-            Pair(LEFT_ELBOW, LEFT_HAND),
-            
-            // Right arm
+            Pair(LEFT_ELBOW, LEFT_WRIST),
             Pair(RIGHT_SHOULDER, RIGHT_ELBOW),
-            Pair(RIGHT_ELBOW, RIGHT_HAND),
+            Pair(RIGHT_ELBOW, RIGHT_WRIST),
             
-            // Hips to Spine
-            Pair(LEFT_HIP, BOTTOM_TORSO),
-            Pair(RIGHT_HIP, BOTTOM_TORSO),
-            
-            // Left leg
+            // Legs
             Pair(LEFT_HIP, LEFT_KNEE),
-            Pair(LEFT_KNEE, LEFT_FOOT),
-            
-            // Right leg
+            Pair(LEFT_KNEE, LEFT_ANKLE),
             Pair(RIGHT_HIP, RIGHT_KNEE),
-            Pair(RIGHT_KNEE, RIGHT_FOOT)
+            Pair(RIGHT_KNEE, RIGHT_ANKLE)
         )
     }
 }

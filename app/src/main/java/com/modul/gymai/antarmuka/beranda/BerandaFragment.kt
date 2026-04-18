@@ -112,14 +112,6 @@ class BerandaFragment : Fragment() {
         
         viewModel.recentSessions.observe(viewLifecycleOwner) { sessions ->
             recentActivityAdapter.submitList(sessions)
-            
-            // Calculate average accuracy for the stats card from these sessions
-            if (sessions.isNotEmpty()) {
-                val avg = (sessions.sumOf { it.averageConfidence.toDouble() } / sessions.size * 100).toInt()
-                binding.tvAccuracy.text = "$avg% Rata-rata Akurasi"
-            } else {
-                binding.tvAccuracy.text = "0% Rata-rata Akurasi"
-            }
         }
     }
 

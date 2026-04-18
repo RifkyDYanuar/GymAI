@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,9 +19,9 @@ import com.modul.gymai.data.WorkoutRepository
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.FragmentDeteksiBinding
 import com.modul.gymai.pose.PoseResult
+import com.modul.gymai.pose.YoloPoseDetector
 import com.modul.gymai.processing.BicepCurlRuleEngine
 import com.modul.gymai.processing.ExerciseType
-import com.modul.gymai.processing.FeatureExtractor
 import com.modul.gymai.processing.LateralRaiseRuleEngine
 import com.modul.gymai.processing.RepetitionCounter
 import com.modul.gymai.processing.SequenceBuffer
@@ -41,22 +40,45 @@ class DeteksiFragment : Fragment() {
     }
 
     private var _binding: FragmentDeteksiBinding? = null
-    private val binding get() = _binding!!
+    private val binding
+        get() = _binding!!
 
     // Selected exercise (received from LatihanFragment)
     private lateinit var exerciseType: ExerciseType
 
-    // ML Components (Disabled for cleanup)
-    // private lateinit var poseEstimator: MlKitPoseEstimator
+    // ML Components
+    private lateinit var poseDetector: YoloPoseDetector
     private lateinit var sequenceBuffer: SequenceBuffer
-    // private lateinit var classifier: ExerciseClassifier
     private lateinit var repCounter: RepetitionCounter
 
-    // Rule Engines (one per exercise type, only the active one is used)
+    // Rule Engines
     private var squatEngine: SquatRuleEngine? = null
     private var curlEngine: BicepCurlRuleEngine? = null
     private var raiseEngine: LateralRaiseRuleEngine? = null
     private var pressEngine: ShoulderPressRuleEngine? = null
+
+    // State for motion detection
+    private var lastPose: PoseResult? = null
+    private var staticFrameCount = 0
+    private val STATIC_THRESHOLD = 0.015f // Distance threshold
+    private val STATIC_FRAMES_LIMIT = 45 // ~1.5 seconds at 30fps
+
+    // Pipeline State
+    private var isDetecting = false
+    private var sessionStartTime = 0L
+    private var confidenceSum = 0f
+    private var confidenceCount = 0
+    private var lastFpsTime = SystemClock.elapsedRealtime()
+    private var frameCount = 0
+    private var detectionState = DetectionState.RULES_OVERLAY
+    private var rulesStartTime = 0L
+    private var countdownStartTime = 0L
+    private var missingFrameCount = 0
+
+    // Feedback tracking
+    private val feedbackMap = mutableMapOf<String, Int>()
+
+    private val scope = CoroutineScope(Dispatchers.IO + Job())
 
     // Camera
     private lateinit var cameraManager: CameraManager
@@ -66,43 +88,25 @@ class DeteksiFragment : Fragment() {
         COUNTDOWN_5S,
         EVALUATING
     }
-    
-    // Session state
-    private var isDetecting = false
-    private var sessionStartTime = 0L
-    private var confidenceSum = 0f
-    private var confidenceCount = 0
-    private var lastFpsTime = SystemClock.elapsedRealtime()
-    private var frameCount = 0
-    
-    // Custom Pipeline State
-    private var detectionState = DetectionState.RULES_OVERLAY
-    private var rulesStartTime = 0L
-    private var countdownStartTime = 0L
-    private var missingFrameCount = 0
-    
-    // Feedback tracking
-    private val feedbackMap = mutableMapOf<String, Int>()
-
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
 
     private val requestPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) startDetection()
-            else {
-                Toast.makeText(
-                    requireContext(),
-                    getString(com.modul.gymai.R.string.permission_denied),
-                    Toast.LENGTH_LONG
-                ).show()
-                findNavController().navigateUp()
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) startDetection()
+                else {
+                    Toast.makeText(
+                                    requireContext(),
+                                    "Izin kamera diperlukan untuk memulai deteksi",
+                                    Toast.LENGTH_LONG
+                            )
+                            .show()
+                    findNavController().navigateUp()
+                }
             }
-        }
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
+            inflater: LayoutInflater,
+            container: ViewGroup?,
+            savedInstanceState: Bundle?
     ): View {
         _binding = FragmentDeteksiBinding.inflate(inflater, container, false)
         return binding.root
@@ -118,9 +122,7 @@ class DeteksiFragment : Fragment() {
         initMLComponents()
         setupHeader()
 
-        binding.btnStop.setOnClickListener {
-            stopAndSaveSession()
-        }
+        binding.btnStop.setOnClickListener { stopAndSaveSession() }
 
         binding.btnSwitchCamera.setOnClickListener {
             if (::cameraManager.isInitialized) {
@@ -132,39 +134,15 @@ class DeteksiFragment : Fragment() {
         checkCameraPermission()
     }
 
-    /** Set up the top bar with exercise name and camera hint. */
+    /** Set up the top bar with exercise name. */
     private fun setupHeader() {
         binding.tvExerciseName.text = "Deteksi ${exerciseType.displayName}"
     }
 
-    /** Initialize all components for the selected exercise type. */
-    private fun initMLComponents() {
-        // poseEstimator = MlKitPoseEstimator(requireContext())
-        sequenceBuffer = SequenceBuffer(96)
-        repCounter = RepetitionCounter(exerciseType)
-
-        // Instantiate only the relevant rule engine
-        when (exerciseType) {
-            ExerciseType.SQUAT          -> squatEngine = SquatRuleEngine()
-            ExerciseType.BICEP_CURL     -> curlEngine  = BicepCurlRuleEngine()
-            ExerciseType.LATERAL_RAISE  -> raiseEngine = LateralRaiseRuleEngine()
-            ExerciseType.SHOULDER_PRESS -> pressEngine = ShoulderPressRuleEngine()
-        }
-
-        /*
-        if (classifier.isModelAvailable()) {
-            Log.d(TAG, "CNN model available for ${exerciseType.displayName}")
-        } else {
-            Log.w(TAG, "No CNN model for ${exerciseType.displayName} — rule-based only")
-        }
-        */
-    }
-
     private fun checkCameraPermission() {
         when {
-            ContextCompat.checkSelfPermission(
-                requireContext(), Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED -> startDetection()
+            ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED -> startDetection()
             else -> requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
@@ -176,37 +154,51 @@ class DeteksiFragment : Fragment() {
         sequenceBuffer.clear()
 
         // Also reset stateful rule engines
+        squatEngine?.reset()
         curlEngine?.reset()
         raiseEngine?.reset()
         pressEngine?.reset()
         feedbackMap.clear()
 
-        cameraManager = CameraManager(
-            context = requireContext(),
-            lifecycleOwner = viewLifecycleOwner,
-            previewView = binding.previewView,
-            onFrameReady = { bitmap -> processFrame(bitmap) }
-        )
+        cameraManager =
+                CameraManager(
+                        context = requireContext(),
+                        lifecycleOwner = viewLifecycleOwner,
+                        previewView = binding.previewView,
+                        onFrameReady = { bitmap -> processFrame(bitmap) }
+                )
         cameraManager.startCamera()
         binding.overlayView.setFrontCamera(cameraManager.isFrontCamera())
         binding.layoutInitializing.visibility = View.GONE
-        
+
         // Start with rules overlay for 10 seconds
         detectionState = DetectionState.RULES_OVERLAY
         rulesStartTime = SystemClock.elapsedRealtime()
         binding.layoutRulesOverlay.visibility = View.VISIBLE
     }
 
+    /** Initialize all components for the selected exercise type. */
+    private fun initMLComponents() {
+        poseDetector = YoloPoseDetector(requireContext())
+        sequenceBuffer = SequenceBuffer(96)
+        repCounter = RepetitionCounter(exerciseType)
+
+        // Instantiate only the relevant rule engine
+        when (exerciseType) {
+            ExerciseType.SQUAT -> squatEngine = SquatRuleEngine()
+            ExerciseType.BICEP_CURL -> curlEngine = BicepCurlRuleEngine()
+            ExerciseType.LATERAL_RAISE -> raiseEngine = LateralRaiseRuleEngine()
+            ExerciseType.SHOULDER_PRESS -> pressEngine = ShoulderPressRuleEngine()
+        }
+    }
+
     /**
      * Full ML pipeline per frame:
      * 1. YOLO pose estimation
-     * 2. Feature extraction (51 features)
-     * 3. Add to sequence buffer
+     * 2. Visibility check
+     * 3. Static pose check
      * 4. Rule engine validation (exercise-specific)
-     * 5. CNN classification when buffer is full (if model available)
-     * 6. Rule engine can override CNN result
-     * 7. Repetition counter update
-     * 8. UI update on main thread
+     * 5. UI update on main thread (no skeleton drawn)
      */
     private fun processFrame(bitmap: android.graphics.Bitmap) {
         if (!isDetecting) return
@@ -227,7 +219,7 @@ class DeteksiFragment : Fragment() {
             DetectionState.RULES_OVERLAY -> {
                 val rulesElapsed = SystemClock.elapsedRealtime() - rulesStartTime
                 val remaining = 10 - (rulesElapsed / 1000).toInt()
-                
+
                 requireActivity().runOnUiThread {
                     val b = _binding ?: return@runOnUiThread
                     if (remaining <= 0) {
@@ -238,36 +230,105 @@ class DeteksiFragment : Fragment() {
                         b.tvRulesCountdown.text = remaining.toString()
                     }
                 }
-                // During rules, we show the camera preview but no skeleton
                 updateUi("--", 0f, "Pelajari panduan penempatan", false, null)
                 return
             }
-
             DetectionState.COUNTDOWN_5S -> {
                 val countdownElapsed = SystemClock.elapsedRealtime() - countdownStartTime
                 val remaining = 5 - (countdownElapsed / 1000).toInt()
-                
+
                 if (remaining <= 0) {
                     detectionState = DetectionState.EVALUATING
                     repCounter.reset()
                     sequenceBuffer.clear()
                 } else {
                     updateUi("BERSIAP", 0f, "Mulai dalam $remaining detik...", true, null)
-                    return 
+                    return
                 }
             }
-            
             DetectionState.EVALUATING -> {
-                // AI Processing is currently disabled for step-by-step cleanup
-                updateUi("--", 0f, "Sistem AI sedang dinonaktifkan", false, null)
+                val isFront = cameraManager.isFrontCamera()
+                val pose = poseDetector.detect(bitmap, isFront)
+
+                if (pose == null || !pose.isValid()) {
+                    missingFrameCount++
+                    if (missingFrameCount > 10) {
+                        updateUi("HILANG", 0f, "Objek tidak terdeteksi di kamera", false, null)
+                    }
+                    return
+                }
+                missingFrameCount = 0
+
+                // Motion Detection
+                if (lastPose != null) {
+                    val movement = calculateMovement(pose, lastPose!!)
+                    if (movement < STATIC_THRESHOLD) {
+                        staticFrameCount++
+                    } else {
+                        staticFrameCount = 0
+                    }
+                }
+                lastPose = pose
+
+                if (staticFrameCount > STATIC_FRAMES_LIMIT) {
+                    updateUi(
+                            "DIAM",
+                            pose.score,
+                            "Belum ada gerakan terdeteksi",
+                            false,
+                            null
+                    ) // User asked: "diam ... tidak terdeteksi bergerak"
+                    return
+                }
+
+                // Rule-based Validation
+                val (isValid, feedback) = validateWithRuleEngine(pose)
+
+                // Repetition Counting (Hanya dihitung jika gerakan BENAR)
+                if (isValid) {
+                    updateRepCounter(pose)
+                }
+
+                val label = if (isValid) "BENAR" else "SALAH"
+                updateUi(
+                        label,
+                        pose.score,
+                        feedback,
+                        isValid,
+                        null
+                ) // null poseResult to NOT draw skeleton
             }
         }
     }
 
-    /**
-     * Delegate validation to the appropriate rule engine.
-     * Returns (isValid, feedbackMessage).
-     */
+    private fun calculateMovement(p1: PoseResult, p2: PoseResult): Float {
+        var totalDist = 0f
+        var count = 0
+        for (i in p1.keypoints.indices) {
+            val k1 = p1.keypoints[i]
+            val k2 = p2.keypoints[i]
+            if (k1.confidence > 0.45f && k2.confidence > 0.45f) {
+                val dx = k1.x - k2.x
+                val dy = k1.y - k2.y
+                totalDist += kotlin.math.sqrt(dx * dx + dy * dy)
+                count++
+            }
+        }
+        return if (count > 0) totalDist / count else 0f
+    }
+
+    private fun updateRepCounter(pose: PoseResult) {
+        val angle =
+                when (exerciseType) {
+                    ExerciseType.SQUAT -> squatEngine?.computeKneeAngle(pose) ?: 180f
+                    ExerciseType.BICEP_CURL -> curlEngine?.computeElbowAngle(pose) ?: 180f
+                    ExerciseType.LATERAL_RAISE -> raiseEngine?.computeShoulderAngle(pose) ?: 0f
+                    ExerciseType.SHOULDER_PRESS -> pressEngine?.computeAvgElbowAngle(pose) ?: 0f
+                }
+        repCounter.onNewFrame(pose, angle)
+    }
+
+    /** Delegate validation to the appropriate rule engine. Returns (isValid, feedbackMessage). */
     private fun validateWithRuleEngine(pose: PoseResult): Pair<Boolean, String> {
         return when (exerciseType) {
             ExerciseType.SQUAT -> {
@@ -290,24 +351,24 @@ class DeteksiFragment : Fragment() {
     }
 
     private fun updateUi(
-        label: String,
-        confidence: Float,
-        feedback: String,
-        isBenar: Boolean,
-        poseResult: PoseResult?
+            label: String,
+            confidence: Float,
+            feedback: String,
+            isBenar: Boolean,
+            poseResult: PoseResult?
     ) {
         requireActivity().runOnUiThread {
             val b = _binding ?: return@runOnUiThread
 
             b.tvLabel.text = label
-            b.tvLabel.background = ContextCompat.getDrawable(
-                requireContext(),
-                if (isBenar) com.modul.gymai.R.drawable.bg_chip_benar
-                else com.modul.gymai.R.drawable.bg_chip_salah
-            )
+            b.tvLabel.background =
+                    ContextCompat.getDrawable(
+                            requireContext(),
+                            if (isBenar) com.modul.gymai.R.drawable.bg_chip_benar
+                            else com.modul.gymai.R.drawable.bg_chip_salah
+                    )
             b.tvLabel.setTextColor(
-                if (isBenar) Color.parseColor("#22C55E")
-                else Color.parseColor("#EF4444")
+                    if (isBenar) Color.parseColor("#22C55E") else Color.parseColor("#EF4444")
             )
 
             val pct = (confidence * 100).toInt()
@@ -322,9 +383,7 @@ class DeteksiFragment : Fragment() {
     }
 
     private fun updateFps(fps: Float) {
-        requireActivity().runOnUiThread {
-            _binding?.tvFps?.text = "${fps.toInt()} FPS"
-        }
+        requireActivity().runOnUiThread { _binding?.tvFps?.text = "${fps.toInt()} FPS" }
     }
 
     private fun stopAndSaveSession() {
@@ -342,13 +401,13 @@ class DeteksiFragment : Fragment() {
             val db = GymDatabase.getInstance(requireContext())
             val repo = WorkoutRepository(db.workoutSessionDao())
             repo.insertSession(
-                WorkoutSession(
-                    totalReps = totalReps,
-                    averageConfidence = avgConf,
-                    durationSeconds = duration,
-                    exerciseType = exerciseType.name,
-                    mostFrequentFeedback = mostFrequentFeedback
-                )
+                    WorkoutSession(
+                            totalReps = totalReps,
+                            averageConfidence = avgConf,
+                            durationSeconds = duration,
+                            exerciseType = exerciseType.name,
+                            mostFrequentFeedback = mostFrequentFeedback
+                    )
             )
         }
 
@@ -363,7 +422,7 @@ class DeteksiFragment : Fragment() {
         super.onDestroyView()
         isDetecting = false
         if (::cameraManager.isInitialized) cameraManager.release()
-        // if (::poseEstimator.isInitialized) poseEstimator.close()
+        if (::poseDetector.isInitialized) poseDetector.close()
         _binding = null
     }
 }

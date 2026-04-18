@@ -35,42 +35,28 @@ import com.modul.gymai.utils.AngleUtils
 class LateralRaiseRuleEngine {
 
     companion object {
-        private const val MIN_CONF = 0.4f
-
-        // Saat UP: Y siku harus dekat dengan Y bahu (±toleransi, koordinat ternormalisasi)
-        // Y bertambah ke bawah, jadi Y siku "dekat" Y bahu berarti selisihnya kecil
-        private const val SHOULDER_HEIGHT_TOLERANCE = 0.08f
-
-        // Siku tidak boleh lurus — sudut di > maksimum ini = terlalu lurus
-        private const val ELBOW_TOO_STRAIGHT_ANGLE = 175f
-
-        // Siku tidak boleh terlalu ditekuk — < minimum ini = terlalu tekuk
-        private const val ELBOW_TOO_BENT_ANGLE = 130f
-
-        // Selisih ketinggian (Y) antara siku kiri dan kanan untuk simetri
-        private const val SYMMETRY_THRESHOLD = 0.07f
-
-        // Threshold naik bahu: bahu tidak boleh naik > ini dari posisi awal
-        private const val SHOULDER_SHRUG_THRESHOLD = 0.05f
+        private const val MIN_CONF = 0.45f
+        
+        // Peaks based on rule-based data provided by user
+        private const val SHOULDER_PEAK_MIN = 70f
+        private const val SHOULDER_PEAK_MAX = 100f
+        
+        private const val TORSO_STABILITY_THRESHOLD = 10f // Torso deviation <= 10
     }
 
     data class RuleResult(
         val isValid: Boolean,
         val feedback: String,
-        val leftAbductionLevel: Float = 0f,  // 0 = bawah, 1 = sejajar bahu
-        val rightAbductionLevel: Float = 0f
+        val shoulderAngle: Float = 0f,
+        val torsoAngle: Float = 0f
     )
-
-    private var refLeftShoulderY: Float = -1f
-    private var refRightShoulderY: Float = -1f
-    private var isRefSet: Boolean = false
 
     /**
      * Validasi pose lateral raise pada frame saat ini.
      */
     fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
-            return RuleResult(false, "Pose tidak terdeteksi — hadapkan kamera ke depan tubuh")
+            return RuleResult(false, "Pastikan seluruh tubuh terlihat kamera")
         }
 
         val kp = pose.keypoints
@@ -79,134 +65,67 @@ class LateralRaiseRuleEngine {
         val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
         val lElbow    = kp[Keypoint.LEFT_ELBOW]
         val rElbow    = kp[Keypoint.RIGHT_ELBOW]
-        val lWrist    = kp[Keypoint.LEFT_WRIST]
-        val rWrist    = kp[Keypoint.RIGHT_WRIST]
         val lHip      = kp[Keypoint.LEFT_HIP]
         val rHip      = kp[Keypoint.RIGHT_HIP]
 
-        // Minimal butuh bahu dan siku terdeteksi
-        val hasLeft  = lShoulder.confidence > MIN_CONF && lElbow.confidence > MIN_CONF
-        val hasRight = rShoulder.confidence > MIN_CONF && rElbow.confidence > MIN_CONF
+        // 1. Calculate Shoulder Abduction Angle (Upper Arm vs Vertical)
+        val leftShoulderAngle = if (lShoulder.confidence > MIN_CONF && lElbow.confidence > MIN_CONF) {
+            AngleUtils.verticalAngle(lShoulder.x, lShoulder.y, lElbow.x, lElbow.y)
+        } else 0f
+        val rightShoulderAngle = if (rShoulder.confidence > MIN_CONF && rElbow.confidence > MIN_CONF) {
+            AngleUtils.verticalAngle(rShoulder.x, rShoulder.y, rElbow.x, rElbow.y)
+        } else 0f
+        
+        val avgShoulderAngle = (leftShoulderAngle + rightShoulderAngle) / 
+                              (if (leftShoulderAngle > 0 && rightShoulderAngle > 0) 2f else 1f)
 
-        if (!hasLeft && !hasRight) {
-            return RuleResult(false, "Pastikan kedua lengan terlihat kamera dari depan")
-        }
-
-        // Set referensi bahu saat pertama valid
-        if (!isRefSet) {
-            if (hasLeft)  refLeftShoulderY  = lShoulder.y
-            if (hasRight) refRightShoulderY = rShoulder.y
-            isRefSet = true
-        }
-
-        // Rule: Cek shrug bahu (bahu tidak boleh naik saat mengangkat)
-        if (hasLeft && refLeftShoulderY > 0f) {
-            val shrugDelta = refLeftShoulderY - lShoulder.y  // positif = bahu naik
-            if (shrugDelta > SHOULDER_SHRUG_THRESHOLD) {
-                return RuleResult(false, "Jangan angkat bahu saat mengangkat lengan (jaga bahu tetap turun)")
-            }
-        }
-        if (hasRight && refRightShoulderY > 0f) {
-            val shrugDelta = refRightShoulderY - rShoulder.y
-            if (shrugDelta > SHOULDER_SHRUG_THRESHOLD) {
-                return RuleResult(false, "Jangan angkat bahu saat mengangkat lengan (jaga bahu tetap turun)")
-            }
-        }
-
-        // Rule: Cek sudut siku — tidak boleh terlalu lurus atau terlalu tekuk
-        if (hasLeft && lWrist.confidence > MIN_CONF) {
-            val leftElbowAngle = AngleUtils.angleBetween(
-                lShoulder.x, lShoulder.y,
-                lElbow.x, lElbow.y,
-                lWrist.x, lWrist.y
-            )
-            if (leftElbowAngle > ELBOW_TOO_STRAIGHT_ANGLE) {
-                return RuleResult(false, "Siku kiri terlalu lurus — tekuk sedikit untuk lindungi sendi")
-            }
-            if (leftElbowAngle < ELBOW_TOO_BENT_ANGLE) {
-                return RuleResult(false, "Siku kiri terlalu tertekuk — luruskan lengan lebih banyak")
-            }
-        }
-        if (hasRight && rWrist.confidence > MIN_CONF) {
-            val rightElbowAngle = AngleUtils.angleBetween(
-                rShoulder.x, rShoulder.y,
-                rElbow.x, rElbow.y,
-                rWrist.x, rWrist.y
-            )
-            if (rightElbowAngle > ELBOW_TOO_STRAIGHT_ANGLE) {
-                return RuleResult(false, "Siku kanan terlalu lurus — tekuk sedikit untuk lindungi sendi")
-            }
-            if (rightElbowAngle < ELBOW_TOO_BENT_ANGLE) {
-                return RuleResult(false, "Siku kanan terlalu tertekuk — luruskan lengan lebih banyak")
-            }
-        }
-
-        // Hitung level abduksi (0.0 = bawah, 1.0 = sejajar/di atas bahu)
-        // Ketika Y siku == Y bahu: diferensialnya 0 → level tinggi
-        // Level = 1 - (Y_siku - Y_bahu) / jarak_bahu_pinggul
-        val leftLevel = if (hasLeft) {
-            val hipY = if (lHip.confidence > MIN_CONF) lHip.y else lShoulder.y + 0.3f
-            val range = (hipY - lShoulder.y).coerceAtLeast(0.01f)
-            (1f - (lElbow.y - lShoulder.y) / range).coerceIn(0f, 1f)
+        // 2. Calculate Torso Deviation
+        val torsoAngle = if (lHip.confidence > MIN_CONF && rHip.confidence > MIN_CONF) {
+            val midShoulderX = (lShoulder.x + rShoulder.x) / 2f
+            val midShoulderY = (lShoulder.y + rShoulder.y) / 2f
+            val midHipX = (lHip.x + rHip.x) / 2f
+            val midHipY = (lHip.y + rHip.y) / 2f
+            AngleUtils.verticalAngle(midHipX, midHipY, midShoulderX, midShoulderY)
         } else 0f
 
-        val rightLevel = if (hasRight) {
-            val hipY = if (rHip.confidence > MIN_CONF) rHip.y else rShoulder.y + 0.3f
-            val range = (hipY - rShoulder.y).coerceAtLeast(0.01f)
-            (1f - (rElbow.y - rShoulder.y) / range).coerceIn(0f, 1f)
-        } else 0f
-
-        // Rule: Simetri kedua lengan saat fase UP
-        val avgLevel = (leftLevel + rightLevel) / 2f
-        if (avgLevel > 0.5f && hasLeft && hasRight) {
-            val asymmetry = kotlin.math.abs(lElbow.y - rElbow.y)
-            if (asymmetry > SYMMETRY_THRESHOLD) {
-                return RuleResult(false, "Angkat kedua lengan setara — satu sisi lebih tinggi", leftLevel, rightLevel)
+        val isTorsoStable = torsoAngle <= TORSO_STABILITY_THRESHOLD
+        
+        // Evaluate based on peaks
+        return if (avgShoulderAngle > 45f) { // In upward phase
+            if (avgShoulderAngle in SHOULDER_PEAK_MIN..SHOULDER_PEAK_MAX && isTorsoStable) {
+                RuleResult(true, "Lengan terangkat setinggi bahu dan tubuh stabil", avgShoulderAngle, torsoAngle)
+            } else {
+                val feedback = if (!isTorsoStable) "Hindari tubuh condong"
+                              else "Angkat lengan setinggi bahu"
+                RuleResult(false, feedback, avgShoulderAngle, torsoAngle)
             }
-        }
-
-        return when {
-            avgLevel < 0.3f -> RuleResult(true, "Angkat kedua lengan ke samping setinggi bahu", leftLevel, rightLevel)
-            avgLevel > 0.75f -> RuleResult(true, "Bagus! Tahan sebentar lalu turunkan perlahan", leftLevel, rightLevel)
-            else -> RuleResult(true, "Teruskan — angkat hingga setinggi bahu", leftLevel, rightLevel)
+        } else {
+            RuleResult(true, "Angkat lengan ke samping...", avgShoulderAngle, torsoAngle)
         }
     }
 
     /**
-     * Hitung rata-rata level abduksi bahu untuk rep counter.
-     * 0.0 = tangan di bawah (DOWN), 1.0 = tangan sejajar bahu (UP).
+     * Hitung rata-rata sudut abduksi bahu untuk rep counter.
+     * Menggunakan sudut humeral (lengan atas) terhadap vertikal.
      */
-    fun computeAbductionLevel(pose: PoseResult): Float {
+    fun computeShoulderAngle(pose: PoseResult): Float {
         val kp = pose.keypoints
         val lShoulder = kp[Keypoint.LEFT_SHOULDER]
         val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
         val lElbow    = kp[Keypoint.LEFT_ELBOW]
         val rElbow    = kp[Keypoint.RIGHT_ELBOW]
-        val lHip      = kp[Keypoint.LEFT_HIP]
-        val rHip      = kp[Keypoint.RIGHT_HIP]
 
-        var count = 0
-        var sum = 0f
-
-        if (lShoulder.confidence > MIN_CONF && lElbow.confidence > MIN_CONF) {
-            val hipY = if (lHip.confidence > MIN_CONF) lHip.y else lShoulder.y + 0.3f
-            val range = (hipY - lShoulder.y).coerceAtLeast(0.01f)
-            sum += (1f - (lElbow.y - lShoulder.y) / range).coerceIn(0f, 1f)
-            count++
-        }
-        if (rShoulder.confidence > MIN_CONF && rElbow.confidence > MIN_CONF) {
-            val hipY = if (rHip.confidence > MIN_CONF) rHip.y else rShoulder.y + 0.3f
-            val range = (hipY - rShoulder.y).coerceAtLeast(0.01f)
-            sum += (1f - (rElbow.y - rShoulder.y) / range).coerceIn(0f, 1f)
-            count++
-        }
-
-        return if (count > 0) sum / count else 0f
+        val leftShoulderAngle = if (lShoulder.confidence > MIN_CONF && lElbow.confidence > MIN_CONF) {
+            AngleUtils.verticalAngle(lShoulder.x, lShoulder.y, lElbow.x, lElbow.y)
+        } else 0f
+        val rightShoulderAngle = if (rShoulder.confidence > MIN_CONF && rElbow.confidence > MIN_CONF) {
+            AngleUtils.verticalAngle(rShoulder.x, rShoulder.y, rElbow.x, rElbow.y)
+        } else 0f
+        
+        return (leftShoulderAngle + rightShoulderAngle) / 
+              (if (leftShoulderAngle > 0 && rightShoulderAngle > 0) 2f else if (leftShoulderAngle > 0 || rightShoulderAngle > 0) 1f else 1f)
     }
 
     fun reset() {
-        refLeftShoulderY  = -1f
-        refRightShoulderY = -1f
-        isRefSet = false
     }
 }

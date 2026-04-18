@@ -23,8 +23,6 @@ class RiwayatViewModel(private val repository: WorkoutRepository) : ViewModel() 
     private val _totalReps = MutableLiveData<Int>(0)
     val totalReps: LiveData<Int> = _totalReps
 
-    private val _avgAccuracy = MutableLiveData<Float>(0f)
-    val avgAccuracy: LiveData<Float> = _avgAccuracy
 
     init {
         loadStats()
@@ -44,7 +42,6 @@ class RiwayatViewModel(private val repository: WorkoutRepository) : ViewModel() 
     private fun loadStats() {
         viewModelScope.launch {
             _totalReps.value = repository.getTotalRepsAllTime()
-            _avgAccuracy.value = repository.getAverageAccuracy()
         }
     }
 }
