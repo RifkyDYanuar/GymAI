@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.FragmentRiwayatBinding
-import com.modul.gymai.processing.ExerciseType
+import com.modul.gymai.engine.ExerciseType
 
 class RiwayatFragment : Fragment() {
 

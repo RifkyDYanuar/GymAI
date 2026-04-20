@@ -1,7 +1,7 @@
 package com.modul.gymai.antarmuka.latihan
 
 import com.modul.gymai.R
-import com.modul.gymai.processing.ExerciseType
+import com.modul.gymai.engine.ExerciseType
 
 data class Exercise(
     val id: String,

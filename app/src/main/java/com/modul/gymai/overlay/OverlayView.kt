@@ -18,8 +18,8 @@ class OverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     companion object {
-        private const val POINT_RADIUS = 12f
-        private const val LINE_WIDTH = 8f
+        private const val POINT_RADIUS = 8f
+        private const val LINE_WIDTH = 5f
     }
 
     private val keypointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -37,9 +37,10 @@ class OverlayView @JvmOverloads constructor(
     private var isFrontCamera: Boolean = false
 
     // Colors (High Visibility)
-    private val colorCorrect = Color.WHITE   // Solid White for correct
-    private val colorIncorrect = Color.YELLOW // Solid Yellow for incorrect (easier to see than red on dark)
-    private val colorPoint = Color.parseColor("#FFD700")     // Gold
+    // Colors (High Visibility)
+    private val colorCorrect = Color.parseColor("#00FF00")   // Neon Green
+    private val colorIncorrect = Color.parseColor("#FFFF00") // Neon Yellow
+    private val colorPoint = Color.parseColor("#FF00FF")     // Magenta/Pink (High Contrast)
     private val colorLowConf = Color.parseColor("#80FFFFFF") // Semi-transparent white
 
     /** Sets whether the camera being used is the front camera (for mirroring). */
@@ -48,9 +49,6 @@ class OverlayView @JvmOverloads constructor(
     }
 
     fun updatePose(pose: PoseResult?, correct: Boolean = true) {
-        if (pose != null) {
-            android.util.Log.d("OverlayView", "updatePose: Received ${pose.keypoints.size} keypoints")
-        }
         this.poseResult = pose
         this.isCorrect = correct
         invalidate()
@@ -64,11 +62,6 @@ class OverlayView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val pose = poseResult ?: return
-        
-        // Log dimensions occasionally
-        if (System.currentTimeMillis() % 2000 < 50) {
-            android.util.Log.d("OverlayView", "onDraw: Drawing pose on ${width}x${height} canvas")
-        }
 
         val w = width.toFloat()
         val h = height.toFloat()
@@ -81,9 +74,10 @@ class OverlayView @JvmOverloads constructor(
             val start = pose.keypoints.getOrNull(startIdx) ?: continue
             val end = pose.keypoints.getOrNull(endIdx) ?: continue
 
-            // Only draw if both points have decent confidence
-            if (start.confidence < 0.15f || end.confidence < 0.15f) continue
+            // Threshold ditingkatkan untuk mencegah "ghosting" pada background
+            if (start.confidence < 0.4f || end.confidence < 0.4f) continue
 
+            // Handle mirroring for front camera (flip horizontal relative to view width)
             val sx = if (isFrontCamera) (1f - start.x) * w else start.x * w
             val sy = start.y * h
             val ex = if (isFrontCamera) (1f - end.x) * w else end.x * w
@@ -95,22 +89,21 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw keypoints
         for ((index, kp) in pose.keypoints.withIndex()) {
-            // Visualize keypoint if confidence > 0.15
-            if (kp.confidence < 0.15f) continue
+            if (kp.confidence < 0.4f) continue
 
-            keypointPaint.color = if (kp.confidence > 0.3f) colorPoint else colorLowConf
+            keypointPaint.color = if (kp.confidence > 0.1f) colorPoint else colorLowConf
             keypointPaint.alpha = 255
 
             val cx = if (isFrontCamera) (1f - kp.x) * w else kp.x * w
             val cy = kp.y * h
 
             // Background circle
-            canvas.drawCircle(cx, cy, POINT_RADIUS * 1.5f, keypointPaint)
+            canvas.drawCircle(cx, cy, POINT_RADIUS, keypointPaint)
 
             // Inner white dot for precision look
             keypointPaint.color = Color.WHITE
             keypointPaint.alpha = 255
-            canvas.drawCircle(cx, cy, POINT_RADIUS * 0.6f, keypointPaint)
+            canvas.drawCircle(cx, cy, POINT_RADIUS * 0.4f, keypointPaint)
         }
     }
 }

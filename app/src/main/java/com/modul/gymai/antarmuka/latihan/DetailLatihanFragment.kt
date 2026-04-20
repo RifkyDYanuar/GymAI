@@ -13,7 +13,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import com.modul.gymai.R
 import com.modul.gymai.databinding.FragmentDetailLatihanBinding
-import com.modul.gymai.processing.ExerciseType
 
 class DetailLatihanFragment : Fragment() {
 

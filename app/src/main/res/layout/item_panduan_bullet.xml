@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:layout_marginBottom="8dp">
+
+    <TextView
+        android:id="@+id/tv_bullet_icon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:text="✓"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:fontFamily="@font/poppins" />
+
+    <TextView
+        android:id="@+id/tv_bullet_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:text="Teknik..."
+        android:textColor="@color/on_surface"
+        android:textSize="13sp"
+        android:fontFamily="@font/poppins"
+        android:lineSpacingMultiplier="1.4" />
+
+</LinearLayout>

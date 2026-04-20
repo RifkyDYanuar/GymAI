@@ -1,56 +1,31 @@
-package com.modul.gymai.processing
+package com.modul.gymai.engine
 
 import com.modul.gymai.pose.Keypoint
 import com.modul.gymai.pose.PoseResult
-import kotlin.math.atan2
-import kotlin.math.sqrt
 import com.modul.gymai.utils.AngleUtils
 
-
-class SquatRuleEngine {
+class SquatRuleEngine : ExerciseRuleEngine {
 
     companion object {
         private const val MIN_CONF = 0.45f
-
-        // Peaks based on rule-based data provided by user
         private const val KNEE_PEAK_MIN = 80f
         private const val KNEE_PEAK_MAX = 110f
-        
         private const val HIP_PEAK_MIN = 70f
         private const val HIP_PEAK_MAX = 110f
-        
         private const val TORSO_STABILITY_THRESHOLD = 20f
     }
 
-    data class RuleResult(
-        val isValid: Boolean,
-        val feedback: String,
-        val kneeAngle: Float = 0f,
-        val hipAngle: Float = 0f,
-        val torsoAngle: Float = 0f
-    )
-
-    /**
-     * Check squat rules on the given pose.
-     */
-    fun validate(pose: PoseResult?): RuleResult {
+    override fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
             return RuleResult(false, "Pastikan seluruh tubuh terlihat kamera")
         }
 
         val kp = pose.keypoints
+        val lHip = kp[Keypoint.LEFT_HIP]; val rHip = kp[Keypoint.RIGHT_HIP]
+        val lKnee = kp[Keypoint.LEFT_KNEE]; val rKnee = kp[Keypoint.RIGHT_KNEE]
+        val lAnkle = kp[Keypoint.LEFT_ANKLE]; val rAnkle = kp[Keypoint.RIGHT_ANKLE]
+        val lShoulder = kp[Keypoint.LEFT_SHOULDER]; val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
 
-        // Extract key points
-        val lHip = kp[Keypoint.LEFT_HIP]
-        val rHip = kp[Keypoint.RIGHT_HIP]
-        val lKnee = kp[Keypoint.LEFT_KNEE]
-        val rKnee = kp[Keypoint.RIGHT_KNEE]
-        val lAnkle = kp[Keypoint.LEFT_ANKLE]
-        val rAnkle = kp[Keypoint.RIGHT_ANKLE]
-        val lShoulder = kp[Keypoint.LEFT_SHOULDER]
-        val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
-
-        // 1. Calculate Average Knee Angle
         val leftKneeAngle = if (lHip.confidence > MIN_CONF && lKnee.confidence > MIN_CONF && lAnkle.confidence > MIN_CONF) {
             AngleUtils.angleBetween(lHip.x, lHip.y, lKnee.x, lKnee.y, lAnkle.x, lAnkle.y)
         } else 0f
@@ -60,7 +35,6 @@ class SquatRuleEngine {
         val avgKneeAngle = if (leftKneeAngle > 0 && rightKneeAngle > 0) (leftKneeAngle + rightKneeAngle) / 2f 
                           else if (leftKneeAngle > 0) leftKneeAngle else rightKneeAngle
 
-        // 2. Calculate Average Hip Angle (Shoulder-Hip-Knee)
         val leftHipAngle = if (lShoulder.confidence > MIN_CONF && lHip.confidence > MIN_CONF && lKnee.confidence > MIN_CONF) {
             AngleUtils.angleBetween(lShoulder.x, lShoulder.y, lHip.x, lHip.y, lKnee.x, lKnee.y)
         } else 0f
@@ -70,7 +44,6 @@ class SquatRuleEngine {
         val avgHipAngle = if (leftHipAngle > 0 && rightHipAngle > 0) (leftHipAngle + rightHipAngle) / 2f
                          else if (leftHipAngle > 0) leftHipAngle else rightHipAngle
 
-        // 3. Calculate Torso Deviation
         val midShoulderX = (lShoulder.x + rShoulder.x) / 2f
         val midShoulderY = (lShoulder.y + rShoulder.y) / 2f
         val torsoAngle = if (lHip.confidence > MIN_CONF && rHip.confidence > MIN_CONF) {
@@ -81,7 +54,6 @@ class SquatRuleEngine {
 
         val isTorsoStable = torsoAngle <= TORSO_STABILITY_THRESHOLD
 
-        // Evaluate based on peaks (downward phase)
         return if (avgKneeAngle < 140f) {
             val isKneeCorrect = avgKneeAngle in KNEE_PEAK_MIN..KNEE_PEAK_MAX
             val isHipCorrect = avgHipAngle in HIP_PEAK_MIN..HIP_PEAK_MAX
@@ -89,8 +61,7 @@ class SquatRuleEngine {
             if (isKneeCorrect && isHipCorrect && isTorsoStable) {
                 RuleResult(true, "Kedalaman squat cukup dan postur terkontrol", avgKneeAngle, avgHipAngle, torsoAngle)
             } else {
-                val feedback = if (!isTorsoStable) "Jaga tubuh tetap stabil"
-                              else "Turunkan pinggul lebih dalam"
+                val feedback = if (!isTorsoStable) "Jaga tubuh tetap stabil" else "Turunkan pinggul lebih dalam"
                 RuleResult(false, feedback, avgKneeAngle, avgHipAngle, torsoAngle)
             }
         } else {
@@ -98,8 +69,7 @@ class SquatRuleEngine {
         }
     }
 
-    /** Compute avg knee angle for rep counter */
-    fun computeKneeAngle(pose: PoseResult): Float {
+    override fun calculateMetric(pose: PoseResult): Float {
         val kp = pose.keypoints
         val lHip = kp[Keypoint.LEFT_HIP]; val lKnee = kp[Keypoint.LEFT_KNEE]; val lAnkle = kp[Keypoint.LEFT_ANKLE]
         val rHip = kp[Keypoint.RIGHT_HIP]; val rKnee = kp[Keypoint.RIGHT_KNEE]; val rAnkle = kp[Keypoint.RIGHT_ANKLE]
@@ -109,7 +79,5 @@ class SquatRuleEngine {
         return (left + right) / 2f
     }
 
-    fun reset() {
-    }
+    override fun reset() {}
 }
-

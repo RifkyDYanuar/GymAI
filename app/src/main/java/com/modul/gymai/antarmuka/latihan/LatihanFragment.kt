@@ -9,7 +9,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.modul.gymai.R
 import com.modul.gymai.databinding.FragmentLatihanBinding
-import com.modul.gymai.processing.ExerciseType
+import com.modul.gymai.engine.ExerciseType
 
 class LatihanFragment : Fragment() {
 

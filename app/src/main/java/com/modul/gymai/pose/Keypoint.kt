@@ -60,15 +60,3 @@ data class Keypoint(
         )
     }
 }
-
-/**
- * Full pose result containing 17 keypoints.
- */
-data class PoseResult(
-    val keypoints: List<Keypoint>,
-    val score: Float = 1f
-) {
-    fun isValid(): Boolean = keypoints.size >= 17
-
-    fun getKeypoint(index: Int): Keypoint? = keypoints.getOrNull(index)
-}

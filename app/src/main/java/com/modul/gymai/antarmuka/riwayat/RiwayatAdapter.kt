@@ -9,7 +9,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.modul.gymai.R
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.ItemRiwayatBinding
-import com.modul.gymai.processing.ExerciseType
+import com.modul.gymai.engine.ExerciseType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

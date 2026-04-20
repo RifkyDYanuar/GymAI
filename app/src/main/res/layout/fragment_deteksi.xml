@@ -6,27 +6,29 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- Camera Preview -->
+    <!-- Camera Preview (Not Full Screen) -->
     <androidx.camera.view.PreviewView
         android:id="@+id/preview_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintTop_toBottomOf="@id/top_bar"
+        app:layout_constraintBottom_toTopOf="@id/result_panel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:scaleType="fillCenter" />
+        app:scaleType="fitCenter" />
 
-    <!-- Skeleton Overlay -->
+    <!-- Skeleton Overlay (Matched with Preview) -->
     <com.modul.gymai.overlay.OverlayView
         android:id="@+id/overlay_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:elevation="10dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:elevation="50dp"
+        app:layout_constraintTop_toTopOf="@id/preview_view"
+        app:layout_constraintBottom_toBottomOf="@id/preview_view"
+        app:layout_constraintStart_toStartOf="@id/preview_view"
+        app:layout_constraintEnd_toEndOf="@id/preview_view" />
 
     <!-- Top Bar -->
     <LinearLayout
@@ -37,7 +39,7 @@
         android:gravity="center_vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:paddingTop="56dp"
+        android:paddingTop="16dp"
         android:paddingBottom="16dp"
         android:background="@drawable/bg_header_gradient_horizontal"
         app:layout_constraintTop_toTopOf="parent"

@@ -1,12 +1,10 @@
-package com.modul.gymai.processing
+package com.modul.gymai.engine
 
 /**
  * Enum representing the 4 supported weight-training exercises.
- * Each entry carries display metadata and the CNN model asset filename.
  */
 enum class ExerciseType(
     val displayName: String,
-    val modelFile: String,
     val emoji: String,
     val muscleGroup: String,
     val description: String,
@@ -15,7 +13,6 @@ enum class ExerciseType(
 ) {
     SQUAT(
         displayName   = "Squat",
-        modelFile     = "squat_classifier.tflite",
         emoji         = "🏋",
         muscleGroup   = "Otot: Paha, Bokong, Betis",
         description   = "Latihan untuk kekuatan kaki dan inti tubuh. Efektif meningkatkan massa otot paha dan bokong.",
@@ -24,7 +21,6 @@ enum class ExerciseType(
     ),
     BICEP_CURL(
         displayName   = "Bicep Curl",
-        modelFile     = "bicep_curl_classifier.tflite",
         emoji         = "💪",
         muscleGroup   = "Otot: Biseps, Lengan Atas",
         description   = "Latihan untuk melatih otot bisep. Gerakan menekuk siku dari lurus hingga sudut maksimal.",
@@ -33,7 +29,6 @@ enum class ExerciseType(
     ),
     LATERAL_RAISE(
         displayName   = "Lateral Raise",
-        modelFile     = "lateral_raise_classifier.tflite",
         emoji         = "🙆",
         muscleGroup   = "Otot: Bahu (Deltoid Lateral)",
         description   = "Latihan mengangkat lengan ke samping hingga sejajar bahu untuk melatih otot deltoid lateral.",
@@ -42,7 +37,6 @@ enum class ExerciseType(
     ),
     SHOULDER_PRESS(
         displayName   = "Shoulder Press",
-        modelFile     = "shoulder_press_classifier.tflite",
         emoji         = "🏅",
         muscleGroup   = "Otot: Bahu, Triceps",
         description   = "Latihan mendorong beban ke atas dari posisi bahu hingga lengan lurus sepenuhnya.",

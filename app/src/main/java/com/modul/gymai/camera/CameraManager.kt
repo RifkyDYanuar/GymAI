@@ -1,8 +1,8 @@
 package com.modul.gymai.camera
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.util.Log
+import android.util.Size
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -15,14 +15,14 @@ import java.util.concurrent.Executors
  * Manages CameraX lifecycle: Preview + ImageAnalysis.
  *
  * - Preview binds to PreviewView (UI).
- * - ImageAnalysis provides Bitmap frames for pose inference.
- * - Uses rear camera, RGBA_8888 image format.
+ * - ImageAnalysis provides ImageProxy frames for pose inference.
+ * - Optimized for ML Kit Pose Detection.
  */
 class CameraManager(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
     private val previewView: PreviewView,
-    private val onFrameReady: (Bitmap) -> Unit
+    private val onFrameReady: (ImageProxy) -> Unit
 ) {
 
     companion object {
@@ -52,19 +52,18 @@ class CameraManager(
 
         // Preview use case
         val preview = Preview.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+            .setTargetResolution(Size(640, 480))
             .build()
             .also { it.surfaceProvider = previewView.surfaceProvider }
 
-        // Image analysis use case for ML
+        // Image analysis use case for ML (Optimized for ML Kit)
         val imageAnalysis = ImageAnalysis.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+            .setTargetResolution(Size(640, 480))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
             .build()
             .also { analysis ->
                 analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                    processImageProxy(imageProxy)
+                    onFrameReady(imageProxy)
                 }
             }
 
@@ -79,17 +78,6 @@ class CameraManager(
             Log.d(TAG, "Camera bound successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Use case binding failed: ${e.message}")
-        }
-    }
-
-    private fun processImageProxy(imageProxy: ImageProxy) {
-        try {
-            val bitmap = imageProxy.toBitmap()
-            onFrameReady(bitmap)
-        } catch (e: Exception) {
-            Log.e(TAG, "Frame processing error: ${e.message}")
-        } finally {
-            imageProxy.close()
         }
     }
 
