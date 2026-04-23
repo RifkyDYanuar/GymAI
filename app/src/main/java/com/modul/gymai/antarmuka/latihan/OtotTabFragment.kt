@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.modul.gymai.R
 import com.modul.gymai.databinding.FragmentTabOtotBinding
+import com.modul.gymai.ui.MaterialSymbols
 
 class OtotTabFragment : Fragment() {
 
@@ -32,6 +33,7 @@ class OtotTabFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        MaterialSymbols.applyToTree(binding.root)
         val exerciseId = arguments?.getString(ARG_EXERCISE_ID) ?: return
         val detail = ExerciseDetailRepository.getDetail(exerciseId) ?: return
 

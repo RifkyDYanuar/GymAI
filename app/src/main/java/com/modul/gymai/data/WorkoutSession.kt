@@ -15,5 +15,7 @@ data class WorkoutSession(
     val averageConfidence: Float = 0f,
     val durationSeconds: Long = 0,
     val exerciseType: String = "SQUAT",
-    val mostFrequentFeedback: String? = null
+    val mostFrequentFeedback: String? = null,
+    val feedbackSummary: String? = null,
+    val evaluationVideoPath: String? = null
 )

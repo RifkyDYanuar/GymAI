@@ -13,6 +13,7 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import com.modul.gymai.R
 import com.modul.gymai.databinding.FragmentDetailLatihanBinding
+import com.modul.gymai.ui.MaterialSymbols
 
 class DetailLatihanFragment : Fragment() {
 
@@ -34,6 +35,8 @@ class DetailLatihanFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        MaterialSymbols.applyToTree(binding.root)
 
         exerciseId = arguments?.getString(ARG_EXERCISE_ID) ?: "1"
         exercise = ExerciseRepository.getAllExercises().find { it.id == exerciseId }

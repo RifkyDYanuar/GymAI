@@ -25,10 +25,21 @@ interface ExerciseRuleEngine {
 /**
  * Common result object for all rule engines.
  */
+enum class BicepRepStatus {
+    IDLE,
+    IN_PROGRESS,
+    REP_GOOD,
+    REP_BAD
+}
+
 data class RuleResult(
     val isValid: Boolean,
     val feedback: String,
     val primaryMetric: Float = 0f,
     val secondaryMetric: Float = 0f,
-    val torsoAngle: Float = 0f
+    val torsoAngle: Float = 0f,
+    val liveFeedback: String = feedback,
+    val repStatus: BicepRepStatus = BicepRepStatus.IDLE,
+    val repCompleted: Boolean = false,
+    val shouldCountRep: Boolean = false
 )

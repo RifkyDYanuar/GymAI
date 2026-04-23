@@ -11,7 +11,6 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Gerakan BENAR -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -31,13 +30,14 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_check_circle"
+                    android:tag="ms:check_circle"
                     android:tint="@color/white"
                     android:contentDescription="Correct" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="✓  Gerakan yang BENAR"
+                    android:text="Gerakan yang BENAR"
                     android:textColor="@color/white"
                     android:textSize="15sp"
                     android:textStyle="bold"
@@ -53,7 +53,6 @@
             android:nestedScrollingEnabled="false"
             android:layout_marginBottom="20dp" />
 
-        <!-- Gerakan SALAH -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -73,13 +72,14 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_x_circle"
+                    android:tag="ms:cancel"
                     android:tint="@color/white"
                     android:contentDescription="Wrong" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="✗  Gerakan yang SALAH"
+                    android:text="Gerakan yang SALAH"
                     android:textColor="@color/white"
                     android:textSize="15sp"
                     android:textStyle="bold"
@@ -95,7 +95,6 @@
             android:nestedScrollingEnabled="false"
             android:layout_marginBottom="20dp" />
 
-        <!-- Tips -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -121,6 +120,7 @@
                         android:layout_width="22dp"
                         android:layout_height="22dp"
                         android:src="@drawable/ic_lightbulb"
+                        android:tag="ms:lightbulb"
                         android:tint="@color/warning"
                         android:contentDescription="Tips" />
 

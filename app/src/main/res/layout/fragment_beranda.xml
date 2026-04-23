@@ -121,6 +121,7 @@
                             android:layout_width="60dp"
                             android:layout_height="60dp"
                             android:src="@drawable/ic_bolt"
+                            android:tag="ms:bolt"
                             app:tint="#4DFFFFFF" />
 
                     </LinearLayout>
@@ -228,6 +229,7 @@
                         android:layout_width="40dp"
                         android:layout_height="40dp"
                         android:src="@drawable/ic_camera"
+                        android:tag="ms:camera_alt"
                         app:tint="#C1121F" />
 
                     <LinearLayout

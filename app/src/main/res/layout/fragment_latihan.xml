@@ -56,7 +56,6 @@
                     android:layout_marginTop="4dp"
                     android:fontFamily="@font/poppins" />
 
-                <!-- Badges Row -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -73,7 +72,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🏋️  4 Gerakan"
+                            android:text="4 Gerakan"
                             android:textColor="@color/white"
                             android:textSize="11sp"
                             android:textStyle="bold"
@@ -93,7 +92,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="⚡  AI Tech"
+                            android:text="Analisis AI"
                             android:textColor="@color/white"
                             android:textSize="11sp"
                             android:textStyle="bold"
@@ -130,7 +129,6 @@
                 android:layout_marginTop="24dp"
                 android:fontFamily="@font/poppins" />
 
-            <!-- Exercise List -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvExercises"
                 android:layout_width="match_parent"

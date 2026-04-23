@@ -1,11 +1,16 @@
 package com.modul.gymai.data
 
+import android.content.Context
 import androidx.lifecycle.LiveData
+import com.modul.gymai.utils.EvaluationVideoStorage
 
 /**
  * Repository pattern: single source of truth for workout data.
  */
-class WorkoutRepository(private val dao: WorkoutSessionDao) {
+class WorkoutRepository(
+    private val dao: WorkoutSessionDao,
+    private val appContext: Context? = null
+) {
 
     val allSessions: LiveData<List<WorkoutSession>> = dao.getAllSessions()
 
@@ -13,11 +18,18 @@ class WorkoutRepository(private val dao: WorkoutSessionDao) {
         return dao.getSessionsByType(type)
     }
 
+    fun getSessionById(id: Long): LiveData<WorkoutSession?> {
+        return dao.getSessionById(id)
+    }
+
     suspend fun insertSession(session: WorkoutSession): Long {
         return dao.insertSession(session)
     }
 
     suspend fun deleteSession(session: WorkoutSession) {
+        appContext?.let { context ->
+            EvaluationVideoStorage.deleteVideoArtifacts(context, session.evaluationVideoPath)
+        }
         dao.deleteSession(session)
     }
 

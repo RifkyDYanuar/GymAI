@@ -3,8 +3,8 @@ package com.modul.gymai.antarmuka.latihan
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.modul.gymai.R
 import com.modul.gymai.databinding.ItemTechniqueBinding
+import com.modul.gymai.ui.MaterialSymbols
 
 class TipAdapter(private val tips: List<String>) :
     RecyclerView.Adapter<TipAdapter.ViewHolder>() {
@@ -19,8 +19,10 @@ class TipAdapter(private val tips: List<String>) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         with(holder.binding) {
             tvTechnique.text = tips[position]
-            ivIcon.setImageResource(R.drawable.ic_lightbulb)
-            ivIcon.setColorFilter(android.graphics.Color.parseColor("#F59E0B"))
+            MaterialSymbols.applyImageView(ivIcon, "lightbulb")
+            ivIcon.imageTintList = android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.parseColor("#F59E0B")
+            )
             root.setBackgroundResource(android.R.color.transparent)
         }
     }

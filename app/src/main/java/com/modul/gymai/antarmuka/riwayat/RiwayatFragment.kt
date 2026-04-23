@@ -6,11 +6,13 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.FragmentRiwayatBinding
 import com.modul.gymai.engine.ExerciseType
+import com.modul.gymai.ui.MaterialSymbols
 
 class RiwayatFragment : Fragment() {
 
@@ -34,6 +36,7 @@ class RiwayatFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        MaterialSymbols.applyToTree(binding.root)
 
         setupRecyclerView()
         setupTabs()
@@ -42,6 +45,12 @@ class RiwayatFragment : Fragment() {
 
     private fun setupRecyclerView() {
         adapter = RiwayatAdapter()
+        adapter.onItemClick = { session ->
+            val args = Bundle().apply {
+                putLong("sessionId", session.id)
+            }
+            findNavController().navigate(com.modul.gymai.R.id.riwayatDetailFragment, args)
+        }
         adapter.onDeleteClick = { session ->
             showDeleteConfirmation(session)
         }

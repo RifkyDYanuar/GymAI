@@ -6,7 +6,6 @@
     android:orientation="vertical"
     android:background="@color/background">
 
-    <!-- Drag Handle -->
     <View
         android:layout_width="40dp"
         android:layout_height="4dp"
@@ -15,7 +14,6 @@
         android:layout_marginTop="12dp"
         android:layout_marginBottom="8dp" />
 
-    <!-- Header Image + Info -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="180dp">
@@ -27,13 +25,11 @@
             android:scaleType="centerCrop"
             android:contentDescription="Gambar Gerakan" />
 
-        <!-- Dark Gradient Overlay -->
         <View
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@drawable/bg_hero_gradient" />
 
-        <!-- Close Button -->
         <ImageView
             android:id="@+id/btn_modal_close"
             android:layout_width="36dp"
@@ -41,12 +37,12 @@
             android:layout_gravity="top|end"
             android:layout_margin="12dp"
             android:src="@drawable/ic_x_circle"
+            android:tag="ms:cancel"
             android:tint="@color/white"
             android:contentDescription="Tutup"
             android:background="#44000000"
             android:padding="4dp" />
 
-        <!-- Title overlay -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -76,7 +72,6 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- Scrollable Content -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -92,7 +87,6 @@
             android:paddingTop="16dp"
             android:paddingBottom="24dp">
 
-            <!-- Quick Stats Row -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -117,6 +111,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_level"
+                            android:tag="ms:signal_cellular_alt"
                             app:tint="@color/primary"
                             android:contentDescription="Level" />
                         <TextView
@@ -158,6 +153,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_steps"
+                            android:tag="ms:list_alt"
                             app:tint="@color/primary"
                             android:contentDescription="Steps" />
                         <TextView
@@ -198,6 +194,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_equipment"
+                            android:tag="ms:fitness_center"
                             app:tint="@color/primary"
                             android:contentDescription="Alat" />
                         <TextView
@@ -224,11 +221,10 @@
 
             </LinearLayout>
 
-            <!-- Definisi -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📖 Definisi"
+                android:text="Definisi"
                 android:textColor="@color/on_surface"
                 android:textSize="15sp"
                 android:textStyle="bold"
@@ -256,11 +252,10 @@
 
             </androidx.cardview.widget.CardView>
 
-            <!-- Langkah-Langkah -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📋 Langkah-langkah"
+                android:text="Langkah-langkah"
                 android:textColor="@color/on_surface"
                 android:textSize="15sp"
                 android:textStyle="bold"
@@ -274,11 +269,10 @@
                 android:orientation="vertical"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Teknik Benar -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="✅ Teknik Benar"
+                android:text="Teknik Benar"
                 android:textColor="@color/success"
                 android:textSize="15sp"
                 android:textStyle="bold"
@@ -292,11 +286,10 @@
                 android:orientation="vertical"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Kesalahan Umum -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="❌ Kesalahan Umum"
+                android:text="Kesalahan Umum"
                 android:textColor="@color/primary"
                 android:textSize="15sp"
                 android:textStyle="bold"
@@ -310,7 +303,6 @@
                 android:orientation="vertical"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Tips -->
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -328,7 +320,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="💡 Tips"
+                        android:text="Tips"
                         android:textColor="@color/primary"
                         android:textSize="14sp"
                         android:textStyle="bold"

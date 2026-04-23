@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.viewpager2.widget.ViewPager2
+import com.modul.gymai.ui.MaterialSymbols
 
 class OnboardingActivity : AppCompatActivity() {
 
@@ -59,6 +60,7 @@ class OnboardingActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContentView(R.layout.activity_onboarding)
+        MaterialSymbols.applyToTree(findViewById(android.R.id.content))
 
         viewPager = findViewById(R.id.viewpager_onboarding)
         llDots = findViewById(R.id.ll_dots)

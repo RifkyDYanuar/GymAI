@@ -31,6 +31,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_info_circle"
+                    android:tag="ms:info"
                     android:tint="@color/white"
                     android:contentDescription="Info" />
 
@@ -88,6 +89,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_steps"
+                    android:tag="ms:list_alt"
                     android:tint="@color/white"
                     android:contentDescription="Steps" />
 

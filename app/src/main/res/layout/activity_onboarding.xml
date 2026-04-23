@@ -44,6 +44,7 @@
             android:fontFamily="@font/poppins"
             android:letterSpacing="0.05"
             android:visibility="invisible"
+            android:tag="ms-end:arrow_forward"
             android:drawableEnd="@drawable/ic_arrow_right"
             android:drawablePadding="6dp"
             android:paddingTop="10dp"

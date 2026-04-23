@@ -55,6 +55,7 @@
             android:layout_height="56dp"
             android:layout_gravity="top|center_horizontal"
             android:src="@drawable/ic_nav_exercise"
+            android:tag="ms:fitness_center"
             android:translationY="-24dp"
             app:tint="@color/white"
             app:backgroundTint="@color/primary"

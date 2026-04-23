@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.modul.gymai.R
 import com.modul.gymai.databinding.FragmentLatihanBinding
 import com.modul.gymai.engine.ExerciseType
+import com.modul.gymai.ui.MaterialSymbols
 
 class LatihanFragment : Fragment() {
 
@@ -26,6 +27,8 @@ class LatihanFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        MaterialSymbols.applyToTree(binding.root)
 
         val exercises = ExerciseRepository.getAllExercises()
 

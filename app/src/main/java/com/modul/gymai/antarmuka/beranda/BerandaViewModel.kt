@@ -38,7 +38,7 @@ class BerandaViewModel(private val repository: WorkoutRepository) : ViewModel() 
 class BerandaViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val db = GymDatabase.getInstance(context)
-        val repo = WorkoutRepository(db.workoutSessionDao())
+        val repo = WorkoutRepository(db.workoutSessionDao(), context.applicationContext)
         @Suppress("UNCHECKED_CAST")
         return BerandaViewModel(repo) as T
     }

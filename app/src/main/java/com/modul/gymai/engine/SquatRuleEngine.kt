@@ -20,7 +20,7 @@ class SquatRuleEngine : ExerciseRuleEngine {
             return RuleResult(false, "Pastikan seluruh tubuh terlihat kamera")
         }
 
-        val kp = pose.keypoints
+        val kp = pose.rawKeypoints
         val lHip = kp[Keypoint.LEFT_HIP]; val rHip = kp[Keypoint.RIGHT_HIP]
         val lKnee = kp[Keypoint.LEFT_KNEE]; val rKnee = kp[Keypoint.RIGHT_KNEE]
         val lAnkle = kp[Keypoint.LEFT_ANKLE]; val rAnkle = kp[Keypoint.RIGHT_ANKLE]
@@ -70,7 +70,7 @@ class SquatRuleEngine : ExerciseRuleEngine {
     }
 
     override fun calculateMetric(pose: PoseResult): Float {
-        val kp = pose.keypoints
+        val kp = pose.rawKeypoints
         val lHip = kp[Keypoint.LEFT_HIP]; val lKnee = kp[Keypoint.LEFT_KNEE]; val lAnkle = kp[Keypoint.LEFT_ANKLE]
         val rHip = kp[Keypoint.RIGHT_HIP]; val rKnee = kp[Keypoint.RIGHT_KNEE]; val rAnkle = kp[Keypoint.RIGHT_ANKLE]
         

@@ -5,9 +5,9 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.modul.gymai.R
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.ItemRecentActivityHomeBinding
+import com.modul.gymai.ui.MaterialSymbols
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -17,6 +17,7 @@ class RecentActivityAdapter : ListAdapter<WorkoutSession, RecentActivityAdapter.
         val binding = ItemRecentActivityHomeBinding.inflate(
             LayoutInflater.from(parent.context), parent, false
         )
+        MaterialSymbols.applyToTree(binding.root)
         return ViewHolder(binding)
     }
 
@@ -35,14 +36,14 @@ class RecentActivityAdapter : ListAdapter<WorkoutSession, RecentActivityAdapter.
             binding.tvRecentExerciseTime.text = getRelativeTime(session.timestamp)
 
             // Dynamic icon based on type
-            val iconRes = when (session.exerciseType.uppercase()) {
-                "SQUAT" -> R.drawable.ic_flash
-                "PUSHUP" -> R.drawable.ic_bolt
-                "BICEP_CURL" -> R.drawable.ic_muscle
-                "LUNGES" -> R.drawable.ic_level
-                else -> R.drawable.ic_flash
+            val iconSymbol = when (session.exerciseType.uppercase()) {
+                "SQUAT" -> "directions_walk"
+                "PUSHUP" -> "bolt"
+                "BICEP_CURL" -> "fitness_center"
+                "LUNGES" -> "stairs"
+                else -> "bolt"
             }
-            binding.ivRecentExerciseIcon.setImageResource(iconRes)
+            MaterialSymbols.applyImageView(binding.ivRecentExerciseIcon, iconSymbol)
         }
 
         private fun formatExerciseName(type: String): String {

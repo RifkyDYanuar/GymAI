@@ -37,6 +37,7 @@
                         android:layout_width="22dp"
                         android:layout_height="22dp"
                         android:src="@drawable/ic_bolt"
+                        android:tag="ms:bolt"
                         android:tint="@color/white"
                         android:contentDescription="Primary Muscle" />
 
@@ -101,6 +102,7 @@
                         android:layout_width="20dp"
                         android:layout_height="20dp"
                         android:src="@drawable/ic_muscle"
+                        android:tag="ms:fitness_center"
                         android:tint="@color/primary"
                         android:contentDescription="Muscles" />
 
@@ -148,6 +150,7 @@
                         android:layout_width="22dp"
                         android:layout_height="22dp"
                         android:src="@drawable/ic_star"
+                        android:tag="ms:star"
                         android:tint="@color/warning"
                         android:contentDescription="Importance" />
 

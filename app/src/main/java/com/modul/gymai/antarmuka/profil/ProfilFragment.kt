@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import com.modul.gymai.databinding.FragmentProfilBinding
+import com.modul.gymai.ui.MaterialSymbols
 
 class ProfilFragment : Fragment() {
 
@@ -18,6 +19,7 @@ class ProfilFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentProfilBinding.inflate(inflater, container, false)
+        MaterialSymbols.applyToTree(binding.root)
         return binding.root
     }
 

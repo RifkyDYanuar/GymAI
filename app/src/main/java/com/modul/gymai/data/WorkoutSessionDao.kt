@@ -15,6 +15,9 @@ interface WorkoutSessionDao {
     @Query("SELECT * FROM workout_sessions WHERE exerciseType = :type ORDER BY timestamp DESC")
     fun getSessionsByType(type: String): LiveData<List<WorkoutSession>>
 
+    @Query("SELECT * FROM workout_sessions WHERE id = :id LIMIT 1")
+    fun getSessionById(id: Long): LiveData<WorkoutSession?>
+
     @Query("SELECT * FROM workout_sessions ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentSessions(limit: Int): List<WorkoutSession>
 

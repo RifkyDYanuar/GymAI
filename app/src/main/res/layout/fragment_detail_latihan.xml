@@ -50,6 +50,7 @@
                         android:layout_height="24dp"
                         android:layout_gravity="center"
                         android:src="@drawable/ic_arrow_back"
+                        android:tag="ms:arrow_back"
                         android:tint="@color/white"
                         android:contentDescription="Back" />
                 </FrameLayout>
@@ -138,6 +139,7 @@
                             android:layout_width="28dp"
                             android:layout_height="28dp"
                             android:src="@drawable/ic_muscle"
+                            android:tag="ms:fitness_center"
                             android:tint="@color/primary"
                             android:contentDescription="Muscle" />
 
@@ -182,6 +184,7 @@
                             android:layout_width="28dp"
                             android:layout_height="28dp"
                             android:src="@drawable/ic_level"
+                            android:tag="ms:signal_cellular_alt"
                             android:contentDescription="Level"
                             app:tint="@color/primary" />
 
@@ -225,6 +228,7 @@
                             android:layout_width="28dp"
                             android:layout_height="28dp"
                             android:src="@drawable/ic_equipment"
+                            android:tag="ms:fitness_center"
                             app:tint="@color/primary"
                             android:contentDescription="Equipment" />
 
@@ -293,6 +297,7 @@
         android:textSize="16sp"
         android:textStyle="bold"
         android:fontFamily="@font/poppins"
+        android:tag="ms-button:camera_alt"
         app:backgroundTint="@color/primary"
         app:icon="@drawable/ic_camera"
         app:iconTint="@color/white"

@@ -18,7 +18,7 @@ class LateralRaiseRuleEngine : ExerciseRuleEngine {
             return RuleResult(false, "Pastikan seluruh tubuh terlihat kamera")
         }
 
-        val kp = pose.keypoints
+        val kp = pose.rawKeypoints
         val lShoulder = kp[Keypoint.LEFT_SHOULDER]; val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
         val lElbow = kp[Keypoint.LEFT_ELBOW]; val rElbow = kp[Keypoint.RIGHT_ELBOW]
         val lHip = kp[Keypoint.LEFT_HIP]; val rHip = kp[Keypoint.RIGHT_HIP]
@@ -56,7 +56,7 @@ class LateralRaiseRuleEngine : ExerciseRuleEngine {
     }
 
     override fun calculateMetric(pose: PoseResult): Float {
-        val kp = pose.keypoints
+        val kp = pose.rawKeypoints
         val lShoulder = kp[Keypoint.LEFT_SHOULDER]; val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
         val lElbow = kp[Keypoint.LEFT_ELBOW]; val rElbow = kp[Keypoint.RIGHT_ELBOW]
 

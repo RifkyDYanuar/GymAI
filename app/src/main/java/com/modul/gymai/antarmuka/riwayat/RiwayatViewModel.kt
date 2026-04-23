@@ -20,12 +20,8 @@ class RiwayatViewModel(private val repository: WorkoutRepository) : ViewModel() 
         }
     }
 
-    private val _totalReps = MutableLiveData<Int>(0)
-    val totalReps: LiveData<Int> = _totalReps
-
-
-    init {
-        loadStats()
+    val totalReps: LiveData<Int> = repository.allSessions.map { sessions ->
+        sessions.sumOf { it.totalReps }
     }
 
     fun setFilter(type: String?) {
@@ -35,13 +31,6 @@ class RiwayatViewModel(private val repository: WorkoutRepository) : ViewModel() 
     fun deleteSession(session: WorkoutSession) {
         viewModelScope.launch {
             repository.deleteSession(session)
-            loadStats() // Refresh totals at the top
-        }
-    }
-
-    private fun loadStats() {
-        viewModelScope.launch {
-            _totalReps.value = repository.getTotalRepsAllTime()
         }
     }
 }
@@ -49,7 +38,7 @@ class RiwayatViewModel(private val repository: WorkoutRepository) : ViewModel() 
 class RiwayatViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val db = GymDatabase.getInstance(context)
-        val repo = WorkoutRepository(db.workoutSessionDao())
+        val repo = WorkoutRepository(db.workoutSessionDao(), context.applicationContext)
         @Suppress("UNCHECKED_CAST")
         return RiwayatViewModel(repo) as T
     }

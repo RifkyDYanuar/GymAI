@@ -10,8 +10,8 @@
         android:id="@+id/tv_bullet_icon"
         android:layout_width="28dp"
         android:layout_height="28dp"
-        android:text="✓"
-        android:textSize="14sp"
+        android:text="•"
+        android:textSize="18sp"
         android:textStyle="bold"
         android:gravity="center"
         android:fontFamily="@font/poppins" />

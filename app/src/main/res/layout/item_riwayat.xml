@@ -32,6 +32,7 @@
                     android:layout_height="24dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_fitness_center"
+                    android:tag="ms:fitness_center"
                     app:tint="@color/primary" />
             </FrameLayout>
 
@@ -70,6 +71,7 @@
                 android:layout_marginStart="8dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_x_circle"
+                android:tag="ms:cancel"
                 app:tint="@color/text_secondary"
                 android:padding="8dp"
                 android:scaleType="fitCenter" />
@@ -105,6 +107,7 @@
                     android:textColor="@color/on_surface"
                     android:textSize="13sp"
                     android:textStyle="bold"
+                    android:tag="ms-start:bolt"
                     android:drawableStart="@drawable/ic_bolt"
                     android:drawablePadding="6dp"
                     app:drawableTint="@color/primary"
@@ -118,6 +121,7 @@
                     android:text="02:30"
                     android:textColor="@color/text_secondary"
                     android:textSize="13sp"
+                    android:tag="ms-start:list_alt"
                     android:drawableStart="@drawable/ic_steps"
                     android:drawablePadding="6dp"
                     app:drawableTint="@color/text_secondary"
@@ -126,6 +130,59 @@
             </LinearLayout>
 
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_video_availability"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:background="@drawable/bg_chip_blue_light"
+            android:text="Video evaluasi tersedia"
+            android:textColor="#1D4ED8"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            android:fontFamily="@font/poppins"
+            tools:visibility="visible" />
+
+        <FrameLayout
+            android:id="@+id/layout_video_preview"
+            android:layout_width="match_parent"
+            android:layout_height="180dp"
+            android:layout_marginTop="12dp"
+            android:background="@android:color/black"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:id="@+id/iv_video_preview"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="@null"
+                tools:src="@drawable/bicepcurl" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|start"
+                android:layout_margin="10dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
+                android:background="@drawable/bg_chip_blue_light"
+                android:text="Preview gerakan + skeleton"
+                android:textColor="#1D4ED8"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/poppins" />
+
+        </FrameLayout>
 
         <!-- Feedback Section (NEW) -->
         <LinearLayout
@@ -144,6 +201,7 @@
                 android:layout_width="16dp"
                 android:layout_height="16dp"
                 android:src="@drawable/ic_info_circle"
+                android:tag="ms:info"
                 app:tint="#3B82F6" />
 
             <TextView

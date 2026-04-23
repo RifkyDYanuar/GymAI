@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.modul.gymai.R
 import com.modul.gymai.antarmuka.latihan.ExerciseRepository
 import com.modul.gymai.databinding.FragmentBerandaBinding
+import com.modul.gymai.ui.MaterialSymbols
 import android.os.Handler
 import android.os.Looper
 import java.text.SimpleDateFormat
@@ -48,6 +49,7 @@ class BerandaFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        MaterialSymbols.applyToTree(binding.root)
         setupDate()
         setupRecyclerViews()
         setupClickListeners()

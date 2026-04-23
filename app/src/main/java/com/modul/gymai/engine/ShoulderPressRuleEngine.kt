@@ -20,7 +20,7 @@ class ShoulderPressRuleEngine : ExerciseRuleEngine {
             return RuleResult(false, "Pastikan seluruh tubuh terlihat kamera")
         }
 
-        val kp = pose.keypoints
+        val kp = pose.rawKeypoints
         val lShoulder = kp[Keypoint.LEFT_SHOULDER]; val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
         val lElbow = kp[Keypoint.LEFT_ELBOW]; val rElbow = kp[Keypoint.RIGHT_ELBOW]
         val lWrist = kp[Keypoint.LEFT_WRIST]; val rWrist = kp[Keypoint.RIGHT_WRIST]
@@ -70,7 +70,7 @@ class ShoulderPressRuleEngine : ExerciseRuleEngine {
     }
 
     override fun calculateMetric(pose: PoseResult): Float {
-        val kp = pose.keypoints
+        val kp = pose.rawKeypoints
         val lShoulder = kp[Keypoint.LEFT_SHOULDER]; val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
         val lElbow = kp[Keypoint.LEFT_ELBOW]; val rElbow = kp[Keypoint.RIGHT_ELBOW]
         val lWrist = kp[Keypoint.LEFT_WRIST]; val rWrist = kp[Keypoint.RIGHT_WRIST]

@@ -116,6 +116,7 @@
                     android:textColor="#E11D48"
                     android:textSize="11sp"
                     android:textStyle="bold"
+                    android:tag="ms-start:bolt"
                     android:drawableStart="@drawable/ic_flash"
                     android:drawablePadding="6dp" />
 
@@ -129,6 +130,7 @@
                     android:paddingVertical="6dp"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp"
+                    android:tag="ms-start:fitness_center"
                     android:drawableStart="@drawable/ic_fitness_center"
                     android:drawablePadding="6dp" />
             </LinearLayout>
@@ -220,6 +222,7 @@
                     android:textColor="#2563EB"
                     android:textSize="11sp"
                     android:textStyle="bold"
+                    android:tag="ms-start:assignment"
                     android:drawableStart="@drawable/ic_assignment"
                     android:drawablePadding="6dp"
                     android:layout_marginBottom="4dp" />
@@ -254,6 +257,7 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     android:stateListAnimator="@null"
+                    android:tag="ms-button:info"
                     app:icon="@drawable/ic_info_outline"
                     app:iconTint="#374151"
                     app:iconSize="16dp"
@@ -274,6 +278,7 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     android:stateListAnimator="@null"
+                    android:tag="ms-button:camera_alt"
                     app:icon="@drawable/ic_camera_alt"
                     app:iconTint="@color/white"
                     app:iconSize="16dp"

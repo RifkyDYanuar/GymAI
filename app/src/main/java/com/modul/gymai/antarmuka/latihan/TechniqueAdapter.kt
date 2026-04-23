@@ -3,10 +3,10 @@ package com.modul.gymai.antarmuka.latihan
 import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.modul.gymai.R
 import com.modul.gymai.databinding.ItemTechniqueBinding
+import com.modul.gymai.ui.MaterialSymbols
 
 class TechniqueAdapter(
     private val items: List<String>,
@@ -24,12 +24,12 @@ class TechniqueAdapter(
         with(holder.binding) {
             tvTechnique.text = items[position]
             if (isCorrect) {
-                ivIcon.setImageResource(R.drawable.ic_check_circle)
-                ivIcon.setColorFilter(Color.parseColor("#22C55E"))
+                MaterialSymbols.applyImageView(ivIcon, "check_circle")
+                ivIcon.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#22C55E"))
                 root.setBackgroundResource(R.drawable.bg_technique_item_correct)
             } else {
-                ivIcon.setImageResource(R.drawable.ic_x_circle)
-                ivIcon.setColorFilter(Color.parseColor("#EF4444"))
+                MaterialSymbols.applyImageView(ivIcon, "cancel")
+                ivIcon.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#EF4444"))
                 root.setBackgroundResource(R.drawable.bg_technique_item_wrong)
             }
         }

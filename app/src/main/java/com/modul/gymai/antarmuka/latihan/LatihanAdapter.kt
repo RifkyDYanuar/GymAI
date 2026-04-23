@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.modul.gymai.R
+import com.modul.gymai.ui.MaterialSymbols
 
 class LatihanAdapter(
     private val exercises: List<Exercise>,
@@ -21,18 +22,18 @@ class LatihanAdapter(
         val tvExerciseLevel: TextView = itemView.findViewById(R.id.tvExerciseLevel)
         val tvExerciseName: TextView = itemView.findViewById(R.id.tvExerciseName)
         val tvExerciseDesc: TextView = itemView.findViewById(R.id.tvExerciseDesc)
-        
+
         val tvMuscleGroup: TextView = itemView.findViewById(R.id.tvMuscleGroup)
         val tvEquipment: TextView = itemView.findViewById(R.id.tvEquipment)
-        
+
         val tvMuscle1: TextView = itemView.findViewById(R.id.tvMuscle1)
         val tvMuscle2: TextView = itemView.findViewById(R.id.tvMuscle2)
         val tvMuscle3: TextView = itemView.findViewById(R.id.tvMuscle3)
         val tvMuscleMore: TextView = itemView.findViewById(R.id.tvMuscleMore)
-        
+
         val tvStepsTitle: TextView = itemView.findViewById(R.id.tvStepsTitle)
         val tvFirstStepBrief: TextView = itemView.findViewById(R.id.tvFirstStepBrief)
-        
+
         val btnDetail: Button = itemView.findViewById(R.id.btnDetail)
         val btnDetect: Button = itemView.findViewById(R.id.btnDetect)
 
@@ -41,27 +42,26 @@ class LatihanAdapter(
             tvExerciseLevel.text = exercise.level
             tvExerciseName.text = exercise.name
             tvExerciseDesc.text = exercise.description
-            
-            tvMuscleGroup.text = "⚡  ${exercise.primaryMuscleGroup}"
-            tvEquipment.text = "🏋️  ${exercise.equipment}"
-            
-            // Set dummy muscles logic
+
+            tvMuscleGroup.text = exercise.primaryMuscleGroup
+            tvEquipment.text = exercise.equipment
+
             val muscles = exercise.muscleTags
             tvMuscle1.text = muscles.getOrNull(0) ?: ""
             tvMuscle1.visibility = if (muscles.isNotEmpty()) View.VISIBLE else View.GONE
-            
+
             tvMuscle2.text = muscles.getOrNull(1) ?: ""
             tvMuscle2.visibility = if (muscles.size > 1) View.VISIBLE else View.GONE
-            
+
             tvMuscle3.text = muscles.getOrNull(2) ?: ""
             tvMuscle3.visibility = if (muscles.size > 2) View.VISIBLE else View.GONE
-            
+
             tvMuscleMore.text = muscles.getOrNull(3) ?: ""
             tvMuscleMore.visibility = if (muscles.size > 3) View.VISIBLE else View.GONE
 
-            tvStepsTitle.text = "📋 ${exercise.stepCount} Langkah Gerakan"
+            tvStepsTitle.text = "${exercise.stepCount} Langkah Gerakan"
             tvFirstStepBrief.text = exercise.firstStepBrief
-            
+
             ivExerciseImage.setImageResource(exercise.imageResId)
 
             if (exercise.level == "Menengah") {
@@ -80,7 +80,6 @@ class LatihanAdapter(
                 onDetailClick(exercise)
             }
 
-            // Also allow clicking the whole card to open detail
             itemView.setOnClickListener {
                 onDetailClick(exercise)
             }
@@ -89,6 +88,7 @@ class LatihanAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ExerciseViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_latihan, parent, false)
+        MaterialSymbols.applyToTree(view)
         return ExerciseViewHolder(view)
     }
 

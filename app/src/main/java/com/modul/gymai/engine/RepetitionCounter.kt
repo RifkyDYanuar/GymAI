@@ -26,11 +26,11 @@ class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQ
     private var repCount: Int = 0
     private var lastValue: Float = 0f
 
-    fun onNewFrame(value: Float) {
+    fun onNewFrame(value: Float, isFormValid: Boolean = true) {
         lastValue = value
         when (exerciseType) {
             ExerciseType.SQUAT -> updateSquat(value)
-            ExerciseType.BICEP_CURL -> updateBicepCurl(value)
+            ExerciseType.BICEP_CURL -> updateBicepCurlPhase(value)
             ExerciseType.LATERAL_RAISE -> updateLateralRaise(value)
             ExerciseType.SHOULDER_PRESS -> updateShoulderPress(value)
         }
@@ -46,13 +46,18 @@ class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQ
         }
     }
 
-    private fun updateBicepCurl(angle: Float) {
+    private fun updateBicepCurlPhase(angle: Float) {
         when (currentState) {
-            PhaseState.UP -> if (angle < CURL_DOWN_THRESHOLD) currentState = PhaseState.DOWN
-            PhaseState.DOWN -> if (angle > CURL_UP_THRESHOLD) {
-                currentState = PhaseState.UP
-                repCount++
+            PhaseState.UP -> if (angle < CURL_DOWN_THRESHOLD) {
+                currentState = PhaseState.DOWN
             }
+            PhaseState.DOWN -> if (angle > CURL_UP_THRESHOLD) currentState = PhaseState.UP
+        }
+    }
+
+    fun onBicepRepCompleted(shouldCountRep: Boolean) {
+        if (exerciseType == ExerciseType.BICEP_CURL && shouldCountRep) {
+            repCount++
         }
     }
 

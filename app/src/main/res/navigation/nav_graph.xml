@@ -64,7 +64,21 @@
         android:id="@+id/riwayatFragment"
         android:name="com.modul.gymai.antarmuka.riwayat.RiwayatFragment"
         android:label="History"
-        tools:layout="@layout/fragment_riwayat" />
+        tools:layout="@layout/fragment_riwayat">
+        <action
+            android:id="@+id/action_riwayat_to_detail"
+            app:destination="@id/riwayatDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/riwayatDetailFragment"
+        android:name="com.modul.gymai.antarmuka.riwayat.RiwayatDetailFragment"
+        android:label="Detail Riwayat"
+        tools:layout="@layout/fragment_riwayat_detail">
+        <argument
+            android:name="sessionId"
+            app:argType="long" />
+    </fragment>
 
     <fragment
         android:id="@+id/infoFragment"

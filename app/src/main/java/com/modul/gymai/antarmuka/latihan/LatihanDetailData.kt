@@ -15,7 +15,7 @@ data class ExerciseDetail(
 
 data class MuscleGroup(
     val name: String,
-    val type: MuscleType  // PRIMARY, SECONDARY, TERTIARY
+    val type: MuscleType
 )
 
 enum class MuscleType { PRIMARY, SECONDARY, TERTIARY }
@@ -30,32 +30,31 @@ object ExerciseDetailRepository {
             exerciseId = "1",
             definition = "Squat adalah gerakan fundamental dalam latihan kekuatan yang melibatkan menurunkan tubuh dengan menekuk lutut dan pinggul, kemudian kembali ke posisi berdiri. Gerakan ini sangat efektif untuk membangun kekuatan dan massa otot tubuh bagian bawah sekaligus meningkatkan stabilitas core.",
             steps = listOf(
-                "Berdiri tegak dengan kaki selebar bahu, jari kaki sedikit ke luar 15–30°",
-                "Posisikan barbell di trapezius atas (jika pakai beban) atau tangan lurus ke depan",
-                "Tarik napas dalam-dalam, kencangkan core dan dada tetap tegak",
-                "Dorong pinggul ke belakang sambil menekuk lutut secara perlahan",
-                "Turunkan tubuh hingga paha sejajar atau sedikit di bawah lantai",
-                "Pastikan lutut mengikuti arah jari kaki, tidak kolaps ke dalam",
-                "Hembuskan napas kuat sambil mendorong tumit ke lantai untuk bangkit",
-                "Kembali ke posisi awal dengan pinggul dan lutut lurus penuh"
+                "Pastikan seluruh tubuh terlihat jelas di kamera dari kepala sampai kaki.",
+                "Posisikan tubuh menghadap samping serong ke kiri atau kanan kamera.",
+                "Berdiri tegak dengan kaki selebar bahu, jari kaki sedikit mengarah ke luar 15-30 derajat.",
+                "Posisikan barbell di trapezius atas jika memakai beban, atau luruskan tangan ke depan bila tanpa beban.",
+                "Tarik napas, kencangkan core, dan jaga dada tetap tegak.",
+                "Dorong pinggul ke belakang sambil menekuk lutut secara perlahan.",
+                "Turunkan tubuh hingga paha sejajar atau sedikit di bawah posisi sejajar lantai.",
+                "Dorong tumit ke lantai untuk kembali berdiri dengan pinggul dan lutut lurus penuh."
             ),
             correctTechniques = listOf(
-                "Punggung tetap lurus dan netral dari awal hingga akhir gerakan",
-                "Lutut sejajar dengan jari kaki, tidak melebihi ujung jari kaki secara ekstrem",
-                "Tumit selalu menempel di lantai sepanjang gerakan"
+                "Seluruh tubuh tetap terlihat jelas di kamera selama gerakan.",
+                "Tubuh menghadap samping serong ke kiri atau kanan kamera agar sudut squat terbaca lebih jelas.",
+                "Punggung tetap lurus dan netral dari awal hingga akhir gerakan.",
+                "Lutut sejajar dengan arah jari kaki dan tumit tetap menempel di lantai."
             ),
             wrongTechniques = listOf(
-                "Lutut kolaps ke dalam (knee valgus) — berisiko cedera sendi lutut",
-                "Tumit terangkat dari lantai saat turun — menandakan fleksibilitas ankle kurang",
-                "Punggung membulat (butt wink) di titik terbawah — membebani tulang belakang",
-                "Dada terlalu condong ke depan — mengalihkan beban dari kaki ke punggung",
-                "Tidak turun cukup dalam (parallel) — mengurangi efektivitas latihan",
-                "Lutut melewati jari kaki secara ekstrem — tekanan berlebih pada sendi lutut"
+                "Tubuh terlalu menghadap depan atau terlalu membelakangi kamera sehingga sudut gerakan sulit terbaca.",
+                "Sebagian tubuh keluar dari frame kamera saat mulai turun atau naik.",
+                "Lutut kolaps ke dalam atau tumit terangkat dari lantai.",
+                "Punggung membulat dan dada terlalu condong ke depan."
             ),
             tips = listOf(
-                "Pemanasan pergelangan kaki dan pinggul sangat dianjurkan sebelum squat",
-                "Gunakan cermin atau rekam video untuk memantau form dari samping",
-                "Mulai dengan bodyweight squat sebelum menambah beban barbell"
+                "Gunakan sudut kamera samping serong agar posisi pinggul, lutut, dan pergelangan kaki lebih mudah dipantau.",
+                "Pastikan area latihan cukup luas supaya seluruh tubuh tetap masuk frame.",
+                "Mulai dengan bodyweight squat sebelum menambah beban."
             ),
             primaryMuscle = "Quadriceps & Glutes",
             primaryMuscleDesc = "Otot yang paling dominan bekerja dalam gerakan Squat",
@@ -73,28 +72,29 @@ object ExerciseDetailRepository {
             exerciseId = "2",
             definition = "Biceps Curl adalah gerakan isolasi yang berfokus pada penguatan otot bisep lengan atas. Gerakan ini melibatkan fleksi siku dengan membawa beban ke arah bahu, kemudian menurunkannya kembali secara terkontrol.",
             steps = listOf(
-                "Berdiri tegak atau duduk dengan punggung lurus",
-                "Pegang dumbbell di kedua tangan dengan telapak menghadap ke depan (supinasi)",
-                "Kunci siku di sisi tubuh, jangan biarkan bergerak",
-                "Tekuk siku dan angkat dumbbell ke arah bahu secara perlahan",
-                "Kontraksikan bisep di puncak gerakan selama 1 detik",
-                "Turunkan beban secara perlahan hingga lengan hampir lurus penuh"
+                "Pastikan seluruh tubuh terlihat jelas di kamera dari kepala sampai kaki.",
+                "Posisikan tubuh menghadap ke samping kiri atau kanan kamera.",
+                "Berdiri tegak atau duduk dengan punggung lurus.",
+                "Pegang dumbbell di kedua tangan dengan telapak menghadap ke depan.",
+                "Kunci siku di sisi tubuh dan tekuk siku untuk mengangkat dumbbell ke arah bahu secara perlahan.",
+                "Turunkan beban secara perlahan hingga lengan hampir lurus penuh."
             ),
             correctTechniques = listOf(
-                "Siku tetap terkunci di sisi tubuh sepanjang gerakan",
-                "Gerakan naik dan turun sama-sama terkontrol (tidak melempar beban)",
-                "Lengan hampir lurus penuh saat beban diturunkan (range of motion penuh)"
+                "Seluruh tubuh tetap masuk frame agar posisi bahu, siku, dan lengan mudah dipantau.",
+                "Tubuh menghadap samping kiri atau kanan kamera untuk menonjolkan lintasan siku.",
+                "Siku tetap terkunci di sisi tubuh sepanjang gerakan.",
+                "Gerakan naik dan turun dilakukan terkontrol tanpa melempar beban."
             ),
             wrongTechniques = listOf(
-                "Mengayunkan tubuh ke belakang untuk membantu mengangkat beban",
-                "Siku bergerak maju-mundur sehingga delt anterior ikut bekerja",
-                "Menurunkan beban terlalu cepat — kehilangan manfaat eccentric contraction",
-                "Beban terlalu berat sehingga form tidak terjaga"
+                "Tubuh menghadap depan kamera sehingga gerak siku tidak terbaca dengan baik.",
+                "Sebagian tubuh terpotong dari frame saat melakukan curl.",
+                "Mengayunkan tubuh ke belakang untuk membantu mengangkat beban.",
+                "Siku bergerak maju-mundur dan beban diturunkan terlalu cepat."
             ),
             tips = listOf(
-                "Coba variasi hammer curl untuk melatih brachialis dan brachioradialis",
-                "Lakukan gerakan di depan cermin untuk memantau posisi siku",
-                "Fokus pada koneksi pikiran-otot (mind-muscle connection) untuk hasil optimal"
+                "Gunakan posisi kamera samping agar sudut siku lebih mudah dianalisis.",
+                "Jaga jarak dengan kamera supaya seluruh tubuh tetap terlihat meski memegang beban.",
+                "Fokus pada kontraksi bisep dan hindari menggunakan momentum tubuh."
             ),
             primaryMuscle = "Biceps Brachii",
             primaryMuscleDesc = "Otot bisep adalah penggerak utama dalam gerakan curl",
@@ -104,33 +104,34 @@ object ExerciseDetailRepository {
                 MuscleGroup("Brachioradialis (lengan bawah)", MuscleType.SECONDARY),
                 MuscleGroup("Forearm Flexors", MuscleType.TERTIARY)
             ),
-            importanceDesc = "Bisep yang kuat mendukung semua gerakan tarikan (pulling) seperti pull-up dan row. Melatih bisep secara teratur meningkatkan kekuatan fungsional dan penampilan lengan atas secara keseluruhan."
+            importanceDesc = "Bisep yang kuat mendukung semua gerakan tarikan seperti pull-up dan row. Melatih bisep secara teratur meningkatkan kekuatan fungsional dan penampilan lengan atas secara keseluruhan."
         ),
         "3" to ExerciseDetail(
             exerciseId = "3",
-            definition = "Lateral Raise adalah gerakan isolasi yang menargetkan deltoid lateral (bahu samping) untuk menciptakan tampilan bahu yang lebar dan kuat. Gerakan ini melibatkan pengangkatan lengan ke samping hingga sejajar dengan bahu.",
+            definition = "Lateral Raise adalah gerakan isolasi yang menargetkan deltoid lateral atau bahu samping untuk menciptakan tampilan bahu yang lebar dan kuat. Gerakan ini melibatkan pengangkatan lengan ke samping hingga sejajar dengan bahu.",
             steps = listOf(
-                "Berdiri tegak dengan kaki selebar bahu, pegang dumbbell di kedua sisi",
-                "Tekuk siku sedikit (sekitar 10-15°) dan pertahankan sepanjang gerakan",
-                "Angkat kedua lengan ke samping secara bersamaan",
-                "Hentikan ketika lengan sejajar dengan bahu (posisi T)",
-                "Turunkan kembali beban secara perlahan dan terkontrol"
+                "Pastikan seluruh tubuh terlihat jelas di kamera dari kepala sampai kaki.",
+                "Posisikan tubuh menghadap depan ke kamera.",
+                "Berdiri tegak dengan kaki selebar bahu dan pegang dumbbell di kedua sisi tubuh.",
+                "Tekuk siku sedikit dan pertahankan sudutnya sepanjang gerakan.",
+                "Angkat kedua lengan ke samping hingga sejajar dengan bahu, lalu turunkan kembali secara perlahan."
             ),
             correctTechniques = listOf(
-                "Lengan naik dengan gerakan arc (melengkung) ke samping, bukan ke depan",
-                "Bahu tetap rileks, tidak ikut naik (shrugging) saat mengangkat",
-                "Jempol sedikit lebih rendah dari kelingking di puncak gerakan"
+                "Seluruh tubuh terlihat jelas di kamera sepanjang gerakan.",
+                "Tubuh menghadap depan kamera agar pergerakan kedua lengan terlihat seimbang.",
+                "Lengan bergerak ke samping, bukan ke depan.",
+                "Bahu tetap rileks dan tidak ikut terangkat saat mengangkat beban."
             ),
             wrongTechniques = listOf(
-                "Mengayunkan tubuh atau menggunakan momentum",
-                "Bahu naik (shrugging) yang mengaktifkan trapezius bukan deltoid lateral",
-                "Mengangkat lengan melebihi tinggi bahu — risiko impingement",
-                "Beban turun terlalu cepat tanpa kontrol eccentric"
+                "Tubuh diputar ke samping sehingga kedua lengan tidak terbaca simetris.",
+                "Sebagian tubuh keluar dari frame kamera.",
+                "Mengayunkan tubuh atau menggunakan momentum saat mengangkat lengan.",
+                "Mengangkat lengan melebihi tinggi bahu atau membiarkan bahu shrugging."
             ),
             tips = listOf(
-                "Gunakan beban ringan dengan form sempurna lebih baik dari beban berat dengan form buruk",
-                "Cable lateral raise memberikan tension konstan yang lebih baik dari dumbbell",
-                "Lakukan unilateral (satu sisi) untuk mengatasi imbalance otot"
+                "Gunakan sudut kamera depan agar kanan dan kiri bisa dibandingkan dengan jelas.",
+                "Pilih beban ringan dan prioritaskan kontrol gerakan penuh.",
+                "Jaga jarak dengan kamera agar kedua tangan tetap terlihat dari awal sampai akhir."
             ),
             primaryMuscle = "Lateral Deltoids",
             primaryMuscleDesc = "Deltoid lateral adalah target utama yang membentuk lebar bahu",
@@ -140,34 +141,35 @@ object ExerciseDetailRepository {
                 MuscleGroup("Supraspinatus (rotator cuff)", MuscleType.SECONDARY),
                 MuscleGroup("Trapezius Upper", MuscleType.TERTIARY)
             ),
-            importanceDesc = "Deltoid lateral memberikan ilusi bahu yang lebar dan membentuk rasio pinggang-bahu yang ideal (V-taper). Otot ini kritis untuk stabilitas bahu dan performa semua gerakan overhead."
+            importanceDesc = "Deltoid lateral memberikan ilusi bahu yang lebar dan membentuk rasio pinggang-bahu yang ideal. Otot ini juga penting untuk stabilitas bahu dan performa gerakan overhead."
         ),
         "4" to ExerciseDetail(
             exerciseId = "4",
             definition = "Shoulder Press adalah gerakan compound yang melatih seluruh kompleks otot bahu dengan mendorong beban dari posisi bahu ke atas kepala. Gerakan ini merupakan salah satu indikator utama kekuatan tubuh bagian atas.",
             steps = listOf(
-                "Duduk atau berdiri dengan punggung lurus, pegang dumbbell setinggi bahu",
-                "Telapak tangan menghadap ke depan, siku membentuk sudut 90°",
-                "Kencangkan core dan tarik napas sebelum mendorong",
-                "Dorong beban lurus ke atas hingga lengan hampir lurus penuh",
-                "Turunkan beban kembali ke posisi awal secara terkontrol",
-                "Ulangi gerakan dengan ritme yang konsisten"
+                "Pastikan seluruh tubuh terlihat jelas di kamera dari kepala sampai kaki.",
+                "Posisikan tubuh menghadap ke samping kiri atau kanan kamera.",
+                "Duduk atau berdiri dengan punggung lurus dan pegang dumbbell setinggi bahu.",
+                "Telapak tangan menghadap ke depan dan siku membentuk sudut sekitar 90 derajat.",
+                "Kencangkan core lalu dorong beban lurus ke atas hingga lengan hampir lurus penuh.",
+                "Turunkan beban kembali ke posisi awal secara perlahan dan terkontrol."
             ),
             correctTechniques = listOf(
-                "Punggung lurus dan tidak melengkung (arch berlebih) saat mendorong",
-                "Siku sedikit di depan tubuh (tidak terlalu ke belakang) di posisi awal",
-                "Lockout penuh di atas — lengan lurus namun elbow tidak hyperextend"
+                "Seluruh tubuh tetap terlihat di kamera agar lintasan beban dan postur tubuh mudah dipantau.",
+                "Tubuh menghadap samping kiri atau kanan kamera untuk memperjelas dorongan vertikal.",
+                "Punggung tetap lurus dan tidak melengkung berlebihan saat mendorong beban.",
+                "Gerakan dilakukan lurus ke atas dengan ritme yang stabil."
             ),
             wrongTechniques = listOf(
-                "Punggung terlalu melengkung (lumbar hyperextension) — risiko cedera punggung bawah",
-                "Menggunakan momentum kaki (leg drive berlebih) seperti push press",
-                "Siku flare ke luar secara ekstrem di posisi bawah",
-                "Kepala terlalu maju (forward head posture) saat beban di atas"
+                "Tubuh menghadap depan kamera sehingga lintasan dorongan sulit dibaca.",
+                "Sebagian tubuh keluar dari frame saat beban diangkat ke atas.",
+                "Punggung terlalu melengkung atau kepala terlalu maju saat beban di atas.",
+                "Menggunakan momentum kaki atau mendorong beban tidak lurus ke atas."
             ),
             tips = listOf(
-                "Arnold Press adalah variasi untuk melatih semua kepala deltoid",
-                "Lakukan rotator cuff warm-up sebelum shoulder press berat",
-                "Duduk di bangku dengan sandaran punggung untuk perlindungan spine lebih baik"
+                "Gunakan posisi kamera samping agar sudut siku dan lintasan beban terlihat lebih jelas.",
+                "Sisakan ruang kosong di atas kepala supaya beban tidak keluar dari frame saat diangkat.",
+                "Kencangkan core sepanjang gerakan untuk menjaga postur tetap stabil."
             ),
             primaryMuscle = "Shoulders & Triceps",
             primaryMuscleDesc = "Deltoid anterior dan triceps bekerja dominan dalam gerakan press ke atas",
@@ -178,7 +180,7 @@ object ExerciseDetailRepository {
                 MuscleGroup("Upper Pectoralis (dada atas)", MuscleType.SECONDARY),
                 MuscleGroup("Core Stabilizers", MuscleType.TERTIARY)
             ),
-            importanceDesc = "Shoulder press adalah fondasi kekuatan tubuh bagian atas yang mendukung semua gerakan pushing (bench press, push-up). Otot bahu yang kuat melindungi sendi yang paling mobile dan rentan cedera di tubuh."
+            importanceDesc = "Shoulder press adalah fondasi kekuatan tubuh bagian atas yang mendukung semua gerakan pushing seperti bench press dan push-up. Otot bahu yang kuat juga membantu melindungi sendi bahu yang sangat mobile."
         )
     )
 }
