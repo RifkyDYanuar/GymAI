@@ -54,6 +54,10 @@ class WorkoutRepository(
         return dao.getRecentSessions(limit)
     }
 
+    suspend fun getAllSessionsSnapshot(): List<WorkoutSession> {
+        return dao.getAllSessionsSnapshot()
+    }
+
     private fun getTodayStartTimestamp(): Long {
         val cal = java.util.Calendar.getInstance()
         cal.set(java.util.Calendar.HOUR_OF_DAY, 0)

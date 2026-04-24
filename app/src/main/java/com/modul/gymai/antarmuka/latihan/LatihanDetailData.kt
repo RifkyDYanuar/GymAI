@@ -148,26 +148,26 @@ object ExerciseDetailRepository {
             definition = "Shoulder Press adalah gerakan compound yang melatih seluruh kompleks otot bahu dengan mendorong beban dari posisi bahu ke atas kepala. Gerakan ini merupakan salah satu indikator utama kekuatan tubuh bagian atas.",
             steps = listOf(
                 "Pastikan seluruh tubuh terlihat jelas di kamera dari kepala sampai kaki.",
-                "Posisikan tubuh menghadap ke samping kiri atau kanan kamera.",
+                "Posisikan tubuh menghadap depan ke kamera.",
                 "Duduk atau berdiri dengan punggung lurus dan pegang dumbbell setinggi bahu.",
                 "Telapak tangan menghadap ke depan dan siku membentuk sudut sekitar 90 derajat.",
                 "Kencangkan core lalu dorong beban lurus ke atas hingga lengan hampir lurus penuh.",
                 "Turunkan beban kembali ke posisi awal secara perlahan dan terkontrol."
             ),
             correctTechniques = listOf(
-                "Seluruh tubuh tetap terlihat di kamera agar lintasan beban dan postur tubuh mudah dipantau.",
-                "Tubuh menghadap samping kiri atau kanan kamera untuk memperjelas dorongan vertikal.",
+                "Seluruh tubuh tetap terlihat di kamera agar lintasan beban, postur tubuh, dan simetri kanan-kiri mudah dipantau.",
+                "Tubuh menghadap depan kamera agar dorongan kedua lengan dapat dibandingkan secara seimbang.",
                 "Punggung tetap lurus dan tidak melengkung berlebihan saat mendorong beban.",
-                "Gerakan dilakukan lurus ke atas dengan ritme yang stabil."
+                "Kedua lengan mendorong beban lurus ke atas dengan ritme yang stabil dan tinggi yang seimbang."
             ),
             wrongTechniques = listOf(
-                "Tubuh menghadap depan kamera sehingga lintasan dorongan sulit dibaca.",
+                "Tubuh diputar ke samping atau serong sehingga simetri dorongan kanan dan kiri sulit dibaca.",
                 "Sebagian tubuh keluar dari frame saat beban diangkat ke atas.",
                 "Punggung terlalu melengkung atau kepala terlalu maju saat beban di atas.",
-                "Menggunakan momentum kaki atau mendorong beban tidak lurus ke atas."
+                "Menggunakan momentum kaki, mendorong beban tidak lurus ke atas, atau tinggi dorongan kanan dan kiri tidak seimbang."
             ),
             tips = listOf(
-                "Gunakan posisi kamera samping agar sudut siku dan lintasan beban terlihat lebih jelas.",
+                "Gunakan posisi kamera depan agar simetri gerak kedua lengan lebih mudah dianalisis.",
                 "Sisakan ruang kosong di atas kepala supaya beban tidak keluar dari frame saat diangkat.",
                 "Kencangkan core sepanjang gerakan untuk menjaga postur tetap stabil."
             ),

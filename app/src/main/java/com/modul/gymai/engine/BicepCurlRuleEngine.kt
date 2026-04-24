@@ -13,9 +13,9 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         private const val MIN_SHOULDER_CONF = 0.35f
         private const val CURL_START_THRESHOLD = 145f
         private const val ELBOW_PEAK_MIN = 35f
-        private const val ELBOW_PEAK_MAX = 70f
+        private const val ELBOW_PEAK_MAX = 65f
         private const val ARM_EXTENDED_THRESHOLD = 155f
-        private const val TORSO_STABILITY_THRESHOLD = 15f
+        private const val TORSO_STABILITY_THRESHOLD = 10f
         private const val ELBOW_DRIFT_RATIO_THRESHOLD = 0.30f
         private const val UPPER_ARM_SWING_THRESHOLD = 22f
         private const val MIN_UP_PHASE_MS = 450L
@@ -25,6 +25,9 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         private const val ARM_LOST_SCORE_THRESHOLD = 1.1f
         private const val MAJOR_VIOLATION_THRESHOLD_MS = 250L
         private const val MAJOR_VIOLATION_RATIO_THRESHOLD = 0.30f
+        private const val READY_EXTENSION_FRAMES = 4
+        private const val START_ELBOW_FLEX_DELTA = 12f
+        private const val START_WRIST_TRAVEL_RATIO_THRESHOLD = 0.18f
     }
 
     private var cycleActive = false
@@ -43,9 +46,14 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
     private var pendingArmSide: ArmSide? = null
     private var pendingArmFrames = 0
     private var lastResolvedArmSide: ArmSide? = null
+    private var readyExtensionFrames = 0
+    private var readyReferenceWristX = 0f
+    private var readyReferenceWristY = 0f
+    private var readyArmSide: ArmSide? = null
 
     override fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
+            cancelCycle()
             return RuleResult(
                 isValid = false,
                 feedback = "Pastikan tubuh terlihat jelas di kamera",
@@ -61,6 +69,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
 
         val shoulderDist = Math.abs(lShoulder.x - rShoulder.x)
         if (lShoulder.confidence > 0.5f && rShoulder.confidence > 0.5f && shoulderDist > 0.15f) {
+            cancelCycle()
             return RuleResult(
                 isValid = false,
                 feedback = "Harus menghadap ke samping",
@@ -70,6 +79,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         }
 
         val trackedArm = selectTrackingArm(kp) ?: run {
+            cancelCycle()
             return RuleResult(
                 isValid = false,
                 feedback = "Lengan tidak terdeteksi",
@@ -86,6 +96,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         val elbowAngle = AngleUtils.angleBetween(shoulder.x, shoulder.y, elbow.x, elbow.y, wrist.x, wrist.y)
         val upperArmAngle = AngleUtils.verticalAngle(elbow.x, elbow.y, shoulder.x, shoulder.y)
 
+        updateReadyState(trackedArm.side, elbowAngle, wrist)
+
         val lHip = kp[Keypoint.LEFT_HIP]; val rHip = kp[Keypoint.RIGHT_HIP]
         val torsoAngle = if (lHip.confidence > MIN_CONF && rHip.confidence > MIN_CONF) {
             val midShoulderX = (kp[Keypoint.LEFT_SHOULDER].x + kp[Keypoint.RIGHT_SHOULDER].x) / 2f
@@ -95,7 +107,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
             AngleUtils.verticalAngle(midHipX, midHipY, midShoulderX, midShoulderY)
         } else 0f
 
-        if (!cycleActive && elbowAngle < CURL_START_THRESHOLD) {
+        if (!cycleActive && canStartCycle(shoulder, elbow, wrist, elbowAngle)) {
             startCycle(now, elbow, upperArmAngle)
         }
 
@@ -134,7 +146,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
             val finalFeedback = buildFeedback(
                 error = completedViolation,
                 elbowAngle = elbowAngle,
-                defaultMessage = "Repetisi bagus, lanjutkan dengan kontrol"
+                defaultMessage = "Fleksi siku optimal dan tubuh stabil"
             )
             val repStatus = if (completedViolation == null) BicepRepStatus.REP_GOOD else BicepRepStatus.REP_BAD
             val shouldCountRep = completedViolation == null
@@ -154,8 +166,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         val liveFeedback = when {
             tempoViolationDetected -> "Tempo terlalu cepat, perlambat gerakan"
             elbowMovingNow -> "Jaga siku tetap diam di samping tubuh"
-            torsoMovingNow -> "Jaga tubuh tetap tegak, jangan terlalu bergoyang"
-            cycleActive && elbowAngle < 90f && elbowAngle > ELBOW_PEAK_MAX -> "Angkat beban sedikit lebih tinggi"
+            torsoMovingNow -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
+            cycleActive && elbowAngle < 90f && elbowAngle > ELBOW_PEAK_MAX -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
             cycleActive && elbowAngle >= 90f -> "Lakukan gerakan curl dengan kontrol"
             cycleActive -> "Gerakan curl baik, lanjutkan dengan kontrol"
             else -> "Siap untuk repetisi berikutnya"
@@ -185,6 +197,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         torsoViolationMs = 0L
         peakReached = false
         tempoViolationDetected = false
+        resetReadyState()
     }
 
     private fun accumulateViolationDurations(dtMs: Long, elbowMovingNow: Boolean, torsoMovingNow: Boolean) {
@@ -223,8 +236,62 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         torsoViolationMs = 0L
         peakReached = false
         tempoViolationDetected = false
+        resetReadyState()
 
         return completedViolation
+    }
+
+    private fun updateReadyState(side: ArmSide, elbowAngle: Float, wrist: Keypoint) {
+        if (cycleActive) return
+
+        if (readyArmSide != side) {
+            resetReadyState()
+            readyArmSide = side
+        }
+
+        if (elbowAngle >= ARM_EXTENDED_THRESHOLD) {
+            readyExtensionFrames = (readyExtensionFrames + 1).coerceAtMost(READY_EXTENSION_FRAMES + 2)
+            readyReferenceWristX = wrist.x
+            readyReferenceWristY = wrist.y
+        }
+    }
+
+    private fun canStartCycle(
+        shoulder: Keypoint,
+        elbow: Keypoint,
+        wrist: Keypoint,
+        elbowAngle: Float
+    ): Boolean {
+        if (readyExtensionFrames < READY_EXTENSION_FRAMES) return false
+        if (elbowAngle >= CURL_START_THRESHOLD) return false
+
+        val upperArmLength = AngleUtils.distance(shoulder.x, shoulder.y, elbow.x, elbow.y).coerceAtLeast(0.001f)
+        val wristTravelRatio =
+            AngleUtils.distance(readyReferenceWristX, readyReferenceWristY, wrist.x, wrist.y) / upperArmLength
+        val elbowFlexDelta = ARM_EXTENDED_THRESHOLD - elbowAngle
+
+        return elbowFlexDelta >= START_ELBOW_FLEX_DELTA &&
+            wristTravelRatio >= START_WRIST_TRAVEL_RATIO_THRESHOLD
+    }
+
+    private fun cancelCycle() {
+        cycleActive = false
+        cycleStartTimeMs = 0L
+        cyclePeakTimeMs = 0L
+        cycleLastSampleTimeMs = 0L
+        totalMajorViolationMs = 0L
+        elbowViolationMs = 0L
+        torsoViolationMs = 0L
+        peakReached = false
+        tempoViolationDetected = false
+        resetReadyState()
+    }
+
+    private fun resetReadyState() {
+        readyExtensionFrames = 0
+        readyReferenceWristX = 0f
+        readyReferenceWristY = 0f
+        readyArmSide = null
     }
 
     private fun determineCompletedViolation(fullRepDurationMs: Long): BicepFormError? {
@@ -257,9 +324,9 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         return when {
             error == BicepFormError.TEMPO_TOO_FAST -> "Tempo terlalu cepat, perlambat gerakan"
             error == BicepFormError.ELBOW_MOVING -> "Jaga siku tetap diam di samping tubuh"
-            error == BicepFormError.TORSO_SWAY -> "Jaga tubuh tetap tegak, jangan terlalu bergoyang"
-            error == BicepFormError.RANGE_INCOMPLETE -> "Angkat beban sedikit lebih tinggi"
-            elbowAngle < 90f && elbowAngle !in ELBOW_PEAK_MIN..ELBOW_PEAK_MAX -> "Angkat beban sedikit lebih tinggi"
+            error == BicepFormError.TORSO_SWAY -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
+            error == BicepFormError.RANGE_INCOMPLETE -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
+            elbowAngle < 90f && elbowAngle !in ELBOW_PEAK_MIN..ELBOW_PEAK_MAX -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
             else -> defaultMessage
         }
     }
@@ -407,6 +474,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         pendingArmSide = null
         pendingArmFrames = 0
         lastResolvedArmSide = null
+        resetReadyState()
     }
 
     private data class ArmCandidate(

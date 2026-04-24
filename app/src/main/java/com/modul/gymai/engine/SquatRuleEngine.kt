@@ -61,7 +61,7 @@ class SquatRuleEngine : ExerciseRuleEngine {
             if (isKneeCorrect && isHipCorrect && isTorsoStable) {
                 RuleResult(true, "Kedalaman squat cukup dan postur terkontrol", avgKneeAngle, avgHipAngle, torsoAngle)
             } else {
-                val feedback = if (!isTorsoStable) "Jaga tubuh tetap stabil" else "Turunkan pinggul lebih dalam"
+                val feedback = "Turunkan pinggul lebih dalam dan jaga tubuh tetap stabil"
                 RuleResult(false, feedback, avgKneeAngle, avgHipAngle, torsoAngle)
             }
         } else {

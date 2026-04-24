@@ -2,11 +2,15 @@ package com.modul.gymai.antarmuka.deteksi
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.SystemClock
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -26,20 +30,21 @@ import com.modul.gymai.data.WorkoutRepository
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.DialogEvaluationSavedBinding
 import com.modul.gymai.databinding.FragmentDeteksiBinding
+import com.modul.gymai.ml.BicepCurlSequenceClassifier
+import com.modul.gymai.ml.BicepRepSequenceBuffer
 import com.modul.gymai.pose.PoseDetectorHelper
 import com.modul.gymai.pose.PoseResult
 import com.modul.gymai.engine.*
 import com.modul.gymai.pose.Keypoint
 import com.modul.gymai.ui.MaterialSymbols
+import com.modul.gymai.utils.EvaluationVideoRecorder
 import com.modul.gymai.utils.RealtimeTtsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.util.Locale
-import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
 class DeteksiFragment : Fragment() {
@@ -49,8 +54,13 @@ class DeteksiFragment : Fragment() {
         private const val ARG_EXERCISE_TYPE = "exerciseType"
         private const val MOVEMENT_THRESHOLD = 0.005f // Sensitivity for "Diam"
         private const val STILLNESS_LIMIT = 30 // Frames before showing "Diam"
-        private const val BICEP_RESULT_DISPLAY_MS = 700L
-        private const val RULES_COUNTDOWN_SECONDS = 10
+        private const val REP_RESULT_DISPLAY_MS = 700L
+        private const val RULES_COUNTDOWN_SECONDS = 3
+        private const val LIVE_UI_UPDATE_INTERVAL_MS = 40L
+        private const val MIN_LIVE_INFERENCE_INTERVAL_MS = 33L
+        private const val DEFAULT_LIVE_INFERENCE_INTERVAL_MS = 42L
+        private const val MAX_LIVE_INFERENCE_INTERVAL_MS = 50L
+        private const val EVALUATION_RECORDING_FRAME_INTERVAL_MS = 140L
     }
 
     private var _binding: FragmentDeteksiBinding? = null
@@ -66,8 +76,8 @@ class DeteksiFragment : Fragment() {
     private var sessionStartTime = 0L
     private var confidenceSum = 0f
     private var confidenceCount = 0
-    private var lastFpsTime = SystemClock.elapsedRealtime()
-    private var frameCount = 0
+    private var lastProcessedFpsTime = SystemClock.elapsedRealtime()
+    private var processedFrameCount = 0
     private var detectionState = DetectionState.RULES_OVERLAY
     private var missingFrameCount = 0
 
@@ -77,21 +87,42 @@ class DeteksiFragment : Fragment() {
 
     private var lastKeypoints: List<Keypoint>? = null
     private var stillnessCount = 0
-    private var bicepResultDisplayUntil = 0L
-    private var bicepResultLabel = "SIAP"
-    private var bicepResultFeedback = "Siap untuk repetisi berikutnya"
-    private var bicepResultCorrect = true
+    private var repResultDisplayUntil = 0L
+    private var repResultLabel = "SIAP"
+    private var repResultFeedback = "Siap untuk repetisi berikutnya"
+    private var repResultCorrect = true
+    private var lastEvaluationDisplayPose: PoseResult? = null
     private var evaluationVideoPath: String? = null
     private var realtimeTtsManager: RealtimeTtsManager? = null
     private var hasRequestedEvaluationRecordingStart = false
     private var hasEvaluationRecordingFailed = false
+    private var evaluationVideoRecorder: EvaluationVideoRecorder? = null
     private var hasSpokenRulesGuidance = false
     private var isSavingSession = false
     private var rulesCountdownTimer: CountDownTimer? = null
     private var isRulesCountdownRunning = false
     private var isRulesCountdownIntroPending = false
+    private var lastInferenceRequestTime = 0L
+    private var lastInferenceStartTime = 0L
+    private var smoothedInferenceDurationMs = DEFAULT_LIVE_INFERENCE_INTERVAL_MS.toFloat()
+    private var currentInferenceIntervalMs = DEFAULT_LIVE_INFERENCE_INTERVAL_MS
     private var lastAnimatedRulesCountdownValue = -1
     private var lastSpokenRulesCountdownValue = -1
+    private var bicepSequenceClassifier: BicepCurlSequenceClassifier? = null
+    private var bicepRepSequenceBuffer: BicepRepSequenceBuffer? = null
+    private val evaluationFrameCaptureRunnable = object : Runnable {
+        override fun run() {
+            captureEvaluationFrame()
+            val currentBinding = _binding ?: return
+            if (
+                isDetecting &&
+                detectionState == DetectionState.EVALUATING &&
+                evaluationVideoRecorder?.isActive() == true
+            ) {
+                currentBinding.previewView.postDelayed(this, EVALUATION_RECORDING_FRAME_INTERVAL_MS)
+            }
+        }
+    }
 
     enum class DetectionState {
         RULES_OVERLAY,
@@ -120,7 +151,7 @@ class DeteksiFragment : Fragment() {
         MaterialSymbols.applyToTree(binding.root)
         initComponents()
         setupHeader()
-        binding.previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        binding.previewView.implementationMode = PreviewView.ImplementationMode.PERFORMANCE
         realtimeTtsManager = RealtimeTtsManager(requireContext()).also { ttsManager ->
             ttsManager.setOnUtteranceDoneListener { utteranceKey ->
                 activity?.runOnUiThread {
@@ -160,6 +191,7 @@ class DeteksiFragment : Fragment() {
         poseDetectorHelper = PoseDetectorHelper(
             onResults = { poseResult -> processResults(poseResult) },
             onError = { error -> 
+                lastInferenceStartTime = 0L
                 requireActivity().runOnUiThread {
                     Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
                 }
@@ -167,13 +199,27 @@ class DeteksiFragment : Fragment() {
         )
 
         repCounter = RepetitionCounter(exerciseType)
-        
+
         // Unified rule engine interface
         engine = when (exerciseType) {
             ExerciseType.SQUAT -> SquatRuleEngine()
             ExerciseType.BICEP_CURL -> BicepCurlRuleEngine()
             ExerciseType.LATERAL_RAISE -> LateralRaiseRuleEngine()
             ExerciseType.SHOULDER_PRESS -> ShoulderPressRuleEngine()
+        }
+
+        if (exerciseType == ExerciseType.BICEP_CURL) {
+            bicepRepSequenceBuffer = BicepRepSequenceBuffer()
+            if (bicepSequenceClassifier == null) {
+                runCatching {
+                    bicepSequenceClassifier = BicepCurlSequenceClassifier(requireContext())
+                }.onFailure { error ->
+                    Log.e(TAG, "Bicep CNN classifier failed to load", error)
+                    bicepSequenceClassifier = null
+                }
+            }
+        } else {
+            bicepRepSequenceBuffer = null
         }
     }
 
@@ -184,11 +230,16 @@ class DeteksiFragment : Fragment() {
         repCounter.reset()
         engine.reset()
         feedbackMap.clear()
+        lastEvaluationDisplayPose = null
         evaluationVideoPath = null
         hasRequestedEvaluationRecordingStart = false
         hasEvaluationRecordingFailed = false
+        stopEvaluationFrameCapture()
+        evaluationVideoRecorder = null
         hasSpokenRulesGuidance = false
         isSavingSession = false
+        bicepRepSequenceBuffer?.reset()
+        resetRepResultState()
         isRulesCountdownRunning = false
         isRulesCountdownIntroPending = false
         lastAnimatedRulesCountdownValue = -1
@@ -208,38 +259,41 @@ class DeteksiFragment : Fragment() {
                 }
             }
         )
+        cameraManager.setPerformanceMode(CameraManager.PerformanceMode.LIVE_PERFORMANCE)
         cameraManager.startCamera()
         binding.overlayView.setFrontCamera(cameraManager.isFrontCamera())
         binding.layoutInitializing.visibility = View.GONE
+        resetLivePerformanceMetrics()
+        binding.tvFps.text = "-- FPS"
 
         detectionState = DetectionState.RULES_OVERLAY
         binding.layoutRulesOverlay.visibility = View.VISIBLE
         binding.tvRulesCountdown.visibility = View.GONE
-        binding.tvRulesReadyHint.text = "Panduan sedang dibacakan, tunggu sebentar"
+        binding.tvRulesReadyHint.text = "Panduan evaluasi sedang dibacakan, tunggu sebentar"
         binding.tvLabel.text = "SIAP"
-        binding.tvFeedback.text = "Dengarkan panduan penempatan sebelum evaluasi dimulai"
+        binding.tvFeedback.text = "Dengarkan panduan evaluasi sebelum mulai"
         speakRulesGuidanceIfNeeded()
     }
 
     @OptIn(ExperimentalGetImage::class)
     private fun processFrame(imageProxy: ImageProxy) {
-        // Track FPS
-        frameCount++
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastFpsTime >= 1000) {
-            val fps = frameCount * 1000f / (now - lastFpsTime)
-            frameCount = 0
-            lastFpsTime = now
-            requireActivity().runOnUiThread { _binding?.tvFps?.text = "${fps.toInt()} FPS" }
-        }
-
         when (detectionState) {
             DetectionState.RULES_OVERLAY,
             DetectionState.RULES_COUNTDOWN -> {
                 imageProxy.close()
             }
             DetectionState.EVALUATING -> {
-                startEvaluationRecordingIfNeeded()
+                val now = SystemClock.elapsedRealtime()
+                if (poseDetectorHelper.isBusy()) {
+                    imageProxy.close()
+                    return
+                }
+                if (now - lastInferenceRequestTime < currentInferenceIntervalMs) {
+                    imageProxy.close()
+                    return
+                }
+                lastInferenceRequestTime = now
+                lastInferenceStartTime = now
                 poseDetectorHelper.detect(imageProxy)
             }
         }
@@ -248,9 +302,9 @@ class DeteksiFragment : Fragment() {
     private fun announceRulesCountdownIntroIfNeeded() {
         if (detectionState == DetectionState.EVALUATING || isRulesCountdownRunning || isRulesCountdownIntroPending) return
         isRulesCountdownIntroPending = true
-        _binding?.tvRulesReadyHint?.text = "Evaluasi akan dimulai dalam 10 detik"
+        _binding?.tvRulesReadyHint?.text = "Evaluasi akan dimulai dalam 3 detik"
         realtimeTtsManager?.speakIfEligible(
-            message = "Evaluasi akan dimulai dalam sepuluh detik",
+            message = "Evaluasi akan dimulai dalam tiga detik",
             utteranceKey = "rules:countdown-intro",
             cooldownMs = 0L,
             minIntervalMs = 0L,
@@ -296,6 +350,7 @@ class DeteksiFragment : Fragment() {
 
     private fun processResults(pose: PoseResult) {
         if (!isDetecting) return
+        recordProcessedFrame()
 
         if (!pose.isValid()) {
             missingFrameCount++
@@ -316,10 +371,15 @@ class DeteksiFragment : Fragment() {
             stillnessCount = 0
         }
 
-        val result = engine.validate(pose)
-        if (exerciseType == ExerciseType.BICEP_CURL) {
+        val ruleResult = engine.validate(pose)
+        val result = if (exerciseType == ExerciseType.BICEP_CURL) {
+            mergeBicepRuleAndClassifier(pose, ruleResult)
+        } else {
+            ruleResult
+        }
+        if (usesRepCompletionFlow()) {
             if (result.repCompleted) {
-                repCounter.onBicepRepCompleted(result.shouldCountRep)
+                repCounter.onValidatedRepCompleted(result.shouldCountRep)
             }
         } else {
             val metric = engine.calculateMetric(pose)
@@ -331,11 +391,12 @@ class DeteksiFragment : Fragment() {
         confidenceSum += pose.score
         confidenceCount++
         val displayPose = buildDisplayPose(pose)
-        val uiState = if (exerciseType == ExerciseType.BICEP_CURL) {
+        lastEvaluationDisplayPose = displayPose
+        val uiState = if (usesRepCompletionFlow()) {
             if (result.repCompleted && !result.shouldCountRep) {
                 feedbackMap[result.feedback] = feedbackMap.getOrDefault(result.feedback, 0) + 1
             }
-            buildBicepUiState(result)
+            buildRepUiState(result)
         } else {
             if (!result.isValid) {
                 feedbackMap[result.feedback] = feedbackMap.getOrDefault(result.feedback, 0) + 1
@@ -397,6 +458,78 @@ class DeteksiFragment : Fragment() {
         }
 
         return pose.copy(keypoints = displayKeypoints)
+    }
+
+    private fun usesRepCompletionFlow(): Boolean {
+        return exerciseType == ExerciseType.BICEP_CURL ||
+            exerciseType == ExerciseType.LATERAL_RAISE ||
+            exerciseType == ExerciseType.SHOULDER_PRESS
+    }
+
+    private fun mergeBicepRuleAndClassifier(pose: PoseResult, ruleResult: RuleResult): RuleResult {
+        val sequenceBuffer = bicepRepSequenceBuffer ?: return ruleResult
+        val classifier = bicepSequenceClassifier ?: return ruleResult
+
+        if (!pose.isValid() || !isBicepSideView(pose)) {
+            sequenceBuffer.reset()
+            return ruleResult
+        }
+
+        when (ruleResult.repStatus) {
+            BicepRepStatus.IN_PROGRESS -> {
+                sequenceBuffer.append(pose.rawKeypoints)
+                return ruleResult
+            }
+            BicepRepStatus.REP_BAD -> {
+                sequenceBuffer.reset()
+                return ruleResult
+            }
+            BicepRepStatus.REP_GOOD -> {
+                sequenceBuffer.append(pose.rawKeypoints)
+                if (!ruleResult.shouldCountRep) {
+                    sequenceBuffer.reset()
+                    return ruleResult
+                }
+
+                val sequence = sequenceBuffer.buildResampledSequence(
+                    targetLength = classifier.sequenceLength,
+                    featureCount = classifier.featureCount
+                )
+                sequenceBuffer.reset()
+                if (sequence == null) {
+                    return ruleResult
+                }
+
+                val classification = runCatching { classifier.classify(sequence) }.getOrNull() ?: return ruleResult
+                if (classification.isCorrect) {
+                    return ruleResult
+                }
+
+                return ruleResult.copy(
+                    isValid = false,
+                    feedback = "Gerakan kurang tepat, ulangi dengan kontrol",
+                    liveFeedback = "Gerakan kurang tepat, ulangi dengan kontrol",
+                    repStatus = BicepRepStatus.REP_BAD,
+                    shouldCountRep = false
+                )
+            }
+            BicepRepStatus.IDLE -> {
+                if (!sequenceBuffer.isEmpty()) {
+                    sequenceBuffer.reset()
+                }
+                return ruleResult
+            }
+        }
+    }
+
+    private fun isBicepSideView(pose: PoseResult): Boolean {
+        val keypoints = pose.rawKeypoints
+        val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
+        val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
+        if (leftShoulder.confidence <= 0.5f || rightShoulder.confidence <= 0.5f) {
+            return false
+        }
+        return kotlin.math.abs(leftShoulder.x - rightShoulder.x) <= 0.15f
     }
 
     private fun getUndetectedFeedback(pose: PoseResult): String {
@@ -471,21 +604,29 @@ class DeteksiFragment : Fragment() {
         return if (count > 0) totalDist / count else 0f
     }
 
-    private fun buildBicepUiState(result: RuleResult): DetectionUiState {
+    private fun buildRepUiState(result: RuleResult): DetectionUiState {
         val now = SystemClock.elapsedRealtime()
 
         if (result.repStatus == BicepRepStatus.REP_GOOD || result.repStatus == BicepRepStatus.REP_BAD) {
-            bicepResultDisplayUntil = now + BICEP_RESULT_DISPLAY_MS
-            bicepResultLabel = if (result.repStatus == BicepRepStatus.REP_GOOD) "BENAR" else "SALAH"
-            bicepResultFeedback = result.feedback
-            bicepResultCorrect = result.repStatus == BicepRepStatus.REP_GOOD
+            repResultDisplayUntil = now + REP_RESULT_DISPLAY_MS
+            repResultLabel = if (result.repStatus == BicepRepStatus.REP_GOOD) "BENAR" else "SALAH"
+            repResultFeedback = result.feedback
+            repResultCorrect = result.repStatus == BicepRepStatus.REP_GOOD
         }
 
-        if (now < bicepResultDisplayUntil) {
+        if (now < repResultDisplayUntil) {
             return DetectionUiState(
-                label = bicepResultLabel,
-                feedback = bicepResultFeedback,
-                isCorrect = bicepResultCorrect
+                label = repResultLabel,
+                feedback = repResultFeedback,
+                isCorrect = repResultCorrect
+            )
+        }
+
+        if (!result.isValid && !result.repCompleted) {
+            return DetectionUiState(
+                label = "SALAH",
+                feedback = result.liveFeedback,
+                isCorrect = false
             )
         }
 
@@ -513,9 +654,16 @@ class DeteksiFragment : Fragment() {
         }
     }
 
+    private fun resetRepResultState() {
+        repResultDisplayUntil = 0L
+        repResultLabel = "SIAP"
+        repResultFeedback = "Siap untuk repetisi berikutnya"
+        repResultCorrect = true
+    }
+
     private fun updateUi(label: String, confidence: Float, feedback: String, isCorrect: Boolean, pose: PoseResult?) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastUiUpdateTime < 33L) return
+        if (now - lastUiUpdateTime < LIVE_UI_UPDATE_INTERVAL_MS) return
         lastUiUpdateTime = now
 
         requireActivity().runOnUiThread {
@@ -533,15 +681,52 @@ class DeteksiFragment : Fragment() {
         }
     }
 
+    private fun resetLivePerformanceMetrics() {
+        val now = SystemClock.elapsedRealtime()
+        lastProcessedFpsTime = now
+        processedFrameCount = 0
+        lastInferenceRequestTime = 0L
+        lastInferenceStartTime = 0L
+        smoothedInferenceDurationMs = DEFAULT_LIVE_INFERENCE_INTERVAL_MS.toFloat()
+        currentInferenceIntervalMs = DEFAULT_LIVE_INFERENCE_INTERVAL_MS
+        lastUiUpdateTime = 0L
+    }
+
+    private fun recordProcessedFrame() {
+        val now = SystemClock.elapsedRealtime()
+        processedFrameCount++
+
+        if (lastInferenceStartTime > 0L) {
+            val inferenceDurationMs = (now - lastInferenceStartTime).coerceAtLeast(1L).toFloat()
+            smoothedInferenceDurationMs =
+                (smoothedInferenceDurationMs * 0.75f) + (inferenceDurationMs * 0.25f)
+            currentInferenceIntervalMs = smoothedInferenceDurationMs
+                .roundToInt()
+                .toLong()
+                .coerceIn(MIN_LIVE_INFERENCE_INTERVAL_MS, MAX_LIVE_INFERENCE_INTERVAL_MS)
+        }
+        lastInferenceStartTime = 0L
+
+        if (now - lastProcessedFpsTime < 1000L) return
+
+        val fps = processedFrameCount * 1000f / (now - lastProcessedFpsTime)
+        processedFrameCount = 0
+        lastProcessedFpsTime = now
+        requireActivity().runOnUiThread {
+            _binding?.tvFps?.text = "${fps.toInt()} FPS"
+        }
+    }
+
     private fun speakRulesGuidanceIfNeeded() {
         if (hasSpokenRulesGuidance) return
         hasSpokenRulesGuidance = true
         val guidanceSpeech = buildString {
-            append("Panduan penempatan. ")
-            append("Cahaya terang, pastikan tubuh terlihat jelas. ")
-            append("Jarak, berdiri dua sampai tiga meter dari kamera. ")
-            append("Seluruh tubuh, kepala hingga kaki harus terlihat. ")
-            append("Stabil, letakkan handphone pada posisi tegak dan diam. ")
+            append("Panduan evaluasi. ")
+            append("Cari tempat yang cukup terang supaya tubuh terlihat jelas. ")
+            append("Atur jarak sekitar satu setengah sampai dua setengah meter, lalu sesuaikan sampai kepala dan kaki tetap masuk kamera. ")
+            append("Pastikan tubuh terlihat utuh dari kepala sampai kaki. ")
+            append("Letakkan handphone tegak dan stabil, sebaiknya gunakan tripod atau penyangga saat evaluasi. ")
+            append("Lakukan gerakan sesuai latihan yang dipilih, lalu ikuti arahan di layar. ")
         }
         realtimeTtsManager?.speakIfEligible(
             message = guidanceSpeech,
@@ -614,15 +799,15 @@ class DeteksiFragment : Fragment() {
     private fun maybeSpeakRealtimeFeedback(result: RuleResult, uiState: DetectionUiState) {
         if (detectionState != DetectionState.EVALUATING) return
 
-        if (exerciseType == ExerciseType.BICEP_CURL && result.repCompleted) {
+        if (usesRepCompletionFlow() && result.repCompleted) {
             val repSpeech = if (result.shouldCountRep) {
-                "Repetisi benar"
+                "Gerakan benar"
             } else {
                 val correction = mapFeedbackToSpeech(result.feedback)
                 if (correction != null) {
-                    "Repetisi salah. $correction"
+                    "Gerakan salah. $correction"
                 } else {
-                    "Repetisi salah"
+                    "Gerakan salah"
                 }
             }
 
@@ -638,7 +823,7 @@ class DeteksiFragment : Fragment() {
         val speech = when {
             uiState.label == "HILANG" -> mapFeedbackToSpeech(uiState.feedback)
             !uiState.isCorrect -> mapFeedbackToSpeech(uiState.feedback)
-            exerciseType == ExerciseType.BICEP_CURL && uiState.label == "GERAKAN" ->
+            usesRepCompletionFlow() && uiState.label == "GERAKAN" ->
                 mapLiveCoachingToSpeech(uiState.feedback)
             else -> null
         } ?: return
@@ -656,11 +841,28 @@ class DeteksiFragment : Fragment() {
             "Lengan tidak terdeteksi" -> "Lengan tidak terdeteksi"
             "Objek tidak terdeteksi" -> "Objek tidak terdeteksi"
             "Harus menghadap ke samping" -> "Harus menghadap ke samping"
+            "Hadapkan tubuh ke depan kamera" -> "Hadapkan tubuh ke depan kamera"
             "Tempo terlalu cepat, perlambat gerakan" -> "Tempo terlalu cepat, perlambat gerakan"
             "Jaga siku tetap diam di samping tubuh" -> "Jaga siku tetap diam di samping tubuh"
             "Jaga tubuh tetap tegak, jangan terlalu bergoyang" -> "Jaga tubuh tetap tegak, jangan terlalu bergoyang"
+            "Angkat beban lebih tinggi dan jaga tubuh tetap tegak" -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
+            "Gerakan kurang tepat, ulangi dengan kontrol" -> "Gerakan kurang tepat, ulangi dengan kontrol"
+            "Jaga dorongan kedua lengan tetap simetris" -> "Jaga dorongan kedua lengan tetap simetris"
+            "Dorong beban lurus ke atas sampai tangan hampir lurus" -> "Dorong beban lurus ke atas sampai tangan hampir lurus"
+            "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil" -> "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil"
+            "Pastikan kedua lengan terlihat jelas" -> "Pastikan kedua lengan terlihat jelas"
             "Angkat beban sedikit lebih tinggi" -> "Angkat beban sedikit lebih tinggi"
+            "Jaga siku tetap sedikit menekuk" -> "Jaga siku tetap sedikit menekuk"
+            "Angkat sedikit lagi sampai sejajar bahu" -> "Angkat sedikit lagi sampai sejajar bahu"
+            "Angkat siku sejajar bahu, jangan lebih tinggi dari bahu" -> "Angkat siku sejajar bahu, jangan lebih tinggi dari bahu"
+            "Angkat lengan setinggi bahu dan hindari tubuh condong" -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
+            "Pimpin gerakan dengan siku, jangan pergelangan tangan" -> "Pimpin gerakan dengan siku, jangan pergelangan tangan"
+            "Jangan angkat bahu saat mengangkat beban" -> "Jangan angkat bahu saat mengangkat beban"
+            "Jaga tubuh tetap stabil, jangan bergoyang" -> "Jaga tubuh tetap stabil, jangan bergoyang"
+            "Angkat beban ke samping serong, jangan terlalu ke pinggir" -> "Angkat beban ke samping serong, jangan terlalu ke pinggir"
+            "Jaga kedua lengan tetap seimbang" -> "Jaga kedua lengan tetap seimbang"
             "Kaki tidak terdeteksi" -> "Kaki tidak terdeteksi"
+            "Turunkan pinggul lebih dalam dan jaga tubuh tetap stabil" -> "Turunkan pinggul lebih dalam dan jaga tubuh tetap stabil"
             "Posisi tubuh belum lengkap" -> "Posisi tubuh belum lengkap"
             "Pastikan tubuh terlihat jelas di kamera" -> "Pastikan tubuh terlihat jelas di kamera"
             else -> null
@@ -672,7 +874,21 @@ class DeteksiFragment : Fragment() {
             "Tempo terlalu cepat, perlambat gerakan" -> feedback
             "Jaga siku tetap diam di samping tubuh" -> feedback
             "Jaga tubuh tetap tegak, jangan terlalu bergoyang" -> feedback
+            "Angkat beban lebih tinggi dan jaga tubuh tetap tegak" -> feedback
+            "Jaga dorongan kedua lengan tetap simetris" -> feedback
+            "Dorong beban lurus ke atas sampai tangan hampir lurus" -> feedback
+            "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil" -> feedback
             "Angkat beban sedikit lebih tinggi" -> feedback
+            "Jaga siku tetap sedikit menekuk" -> feedback
+            "Angkat sedikit lagi sampai sejajar bahu" -> feedback
+            "Angkat siku sejajar bahu, jangan lebih tinggi dari bahu" -> feedback
+            "Angkat lengan setinggi bahu dan hindari tubuh condong" -> feedback
+            "Pimpin gerakan dengan siku, jangan pergelangan tangan" -> feedback
+            "Jangan angkat bahu saat mengangkat beban" -> feedback
+            "Jaga tubuh tetap stabil, jangan bergoyang" -> feedback
+            "Angkat beban ke samping serong, jangan terlalu ke pinggir" -> feedback
+            "Jaga kedua lengan tetap seimbang" -> feedback
+            "Turunkan pinggul lebih dalam dan jaga tubuh tetap stabil" -> feedback
             else -> null
         }
     }
@@ -840,8 +1056,13 @@ class DeteksiFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         isDetecting = false
+        stopEvaluationFrameCapture()
         cancelRulesCountdown()
         if (::poseDetectorHelper.isInitialized) poseDetectorHelper.close()
+        if (!isSavingSession) {
+            runCatching { evaluationVideoRecorder?.discard() }
+        }
+        evaluationVideoRecorder = null
         if (!isSavingSession) {
             if (::cameraManager.isInitialized) {
                 cameraManager.cancelEvaluationRecording()
@@ -853,6 +1074,9 @@ class DeteksiFragment : Fragment() {
         realtimeTtsManager?.setOnUtteranceDoneListener(null)
         realtimeTtsManager?.shutdown()
         realtimeTtsManager = null
+        runCatching { bicepSequenceClassifier?.close() }
+        bicepSequenceClassifier = null
+        bicepRepSequenceBuffer = null
         _binding = null
     }
 
@@ -860,7 +1084,7 @@ class DeteksiFragment : Fragment() {
         super.onResume()
         if (!isDetecting || detectionState != DetectionState.RULES_OVERLAY || hasSpokenRulesGuidance) return
         _binding?.layoutRulesOverlay?.visibility = View.VISIBLE
-        _binding?.tvRulesReadyHint?.text = "Panduan sedang dibacakan, tunggu sebentar"
+        _binding?.tvRulesReadyHint?.text = "Panduan evaluasi sedang dibacakan, tunggu sebentar"
         speakRulesGuidanceIfNeeded()
     }
 
@@ -871,53 +1095,129 @@ class DeteksiFragment : Fragment() {
             detectionState = DetectionState.RULES_OVERLAY
             hasSpokenRulesGuidance = false
             _binding?.tvRulesCountdown?.visibility = View.GONE
-            _binding?.tvRulesReadyHint?.text = "Panduan akan diputar ulang saat halaman dibuka kembali"
+            _binding?.tvRulesReadyHint?.text = "Panduan evaluasi akan diputar ulang saat halaman dibuka kembali"
         }
         realtimeTtsManager?.stop()
     }
 
     private fun startEvaluationRecordingIfNeeded() {
-        if (hasRequestedEvaluationRecordingStart || hasEvaluationRecordingFailed || !::cameraManager.isInitialized) return
-        if (cameraManager.isPreparingEvaluationRecording() || cameraManager.isEvaluationRecording()) return
+        if (hasRequestedEvaluationRecordingStart || hasEvaluationRecordingFailed) return
+        val currentBinding = _binding ?: return
 
         val externalDir = requireContext().getExternalFilesDir("evaluations")
         val baseDir = externalDir ?: File(requireContext().filesDir, "evaluations")
         baseDir.mkdirs()
-        val outputFile = File(
-            baseDir,
-            "${System.currentTimeMillis()}_${exerciseType.name.lowercase(Locale.US)}.mp4"
-        )
-        val requestedPath = outputFile.absolutePath
+        val sourceWidth = currentBinding.previewView.width.takeIf { it > 0 } ?: currentBinding.overlayView.width
+        val sourceHeight = currentBinding.previewView.height.takeIf { it > 0 } ?: currentBinding.overlayView.height
+        if (sourceWidth <= 0 || sourceHeight <= 0) {
+            hasEvaluationRecordingFailed = true
+            return
+        }
 
+        val recorder = EvaluationVideoRecorder(
+            baseDir = baseDir,
+            targetFps = (1000L / EVALUATION_RECORDING_FRAME_INTERVAL_MS).toInt().coerceAtLeast(6),
+            maxDimension = 720
+        )
+        val requestedPath = recorder.startRecording(exerciseType.name, sourceWidth, sourceHeight)
+        if (requestedPath.isNullOrBlank()) {
+            hasEvaluationRecordingFailed = true
+            evaluationVideoRecorder = null
+            evaluationVideoPath = null
+            return
+        }
+
+        evaluationVideoRecorder = recorder
         evaluationVideoPath = requestedPath
         hasRequestedEvaluationRecordingStart = true
-        cameraManager.startEvaluationRecording(outputFile) { finalizedPath ->
-            if (!isSavingSession && finalizedPath == null && evaluationVideoPath == requestedPath) {
-                evaluationVideoPath = null
-                hasEvaluationRecordingFailed = true
-            } else if (!finalizedPath.isNullOrBlank()) {
-                evaluationVideoPath = finalizedPath
-            }
-        }
+        startEvaluationFrameCapture()
     }
 
     private suspend fun stopEvaluationRecordingAndFinalize(): String? {
-        val currentPath = evaluationVideoPath
-        if (!::cameraManager.isInitialized) return currentPath
-        if (!cameraManager.isEvaluationRecording() && !cameraManager.isPreparingEvaluationRecording()) {
-            return currentPath
+        stopEvaluationFrameCapture()
+        val recorder = evaluationVideoRecorder ?: return evaluationVideoPath
+        val finalizedPath = runCatching { recorder.stopAndFinalize() }.getOrNull()
+        evaluationVideoRecorder = null
+        if (!finalizedPath.isNullOrBlank()) {
+            evaluationVideoPath = finalizedPath
+            return finalizedPath
+        }
+        evaluationVideoPath = null
+        return null
+    }
+
+    private fun startEvaluationFrameCapture() {
+        val currentBinding = _binding ?: return
+        stopEvaluationFrameCapture()
+        currentBinding.previewView.post(evaluationFrameCaptureRunnable)
+    }
+
+    private fun stopEvaluationFrameCapture() {
+        _binding?.previewView?.removeCallbacks(evaluationFrameCaptureRunnable)
+    }
+
+    private fun captureEvaluationFrame() {
+        val currentBinding = _binding ?: return
+        val recorder = evaluationVideoRecorder ?: return
+        if (!recorder.isActive()) return
+
+        val previewBitmap = currentBinding.previewView.bitmap ?: return
+        val overlayWidth = currentBinding.overlayView.width
+        val overlayHeight = currentBinding.overlayView.height
+        val targetWidth = overlayWidth.takeIf { it > 0 } ?: previewBitmap.width
+        val targetHeight = overlayHeight.takeIf { it > 0 } ?: previewBitmap.height
+
+        val fullFrameBitmap = Bitmap.createBitmap(
+            targetWidth.coerceAtLeast(1),
+            targetHeight.coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(fullFrameBitmap)
+        canvas.drawColor(Color.BLACK)
+        val previewRect = android.graphics.Rect(0, 0, targetWidth, targetHeight)
+        canvas.drawBitmap(previewBitmap, null, previewRect, null)
+        currentBinding.overlayView.draw(canvas)
+        previewBitmap.recycle()
+
+        val cropRect = calculateRecordedContentRect(targetWidth, targetHeight, lastEvaluationDisplayPose)
+        val croppedBitmap = if (
+            cropRect.width() in 1 until targetWidth ||
+            cropRect.height() in 1 until targetHeight
+        ) {
+            Bitmap.createBitmap(fullFrameBitmap, cropRect.left, cropRect.top, cropRect.width(), cropRect.height())
+        } else {
+            fullFrameBitmap
         }
 
-        return suspendCancellableCoroutine { continuation ->
-            cameraManager.stopEvaluationRecording { finalizedPath ->
-                val resolvedPath = finalizedPath ?: currentPath
-                if (!finalizedPath.isNullOrBlank()) {
-                    evaluationVideoPath = finalizedPath
-                }
-                if (continuation.isActive) {
-                    continuation.resume(resolvedPath)
-                }
-            }
+        if (croppedBitmap !== fullFrameBitmap) {
+            fullFrameBitmap.recycle()
+        }
+
+        recorder.recordFrame(croppedBitmap, System.nanoTime())
+    }
+
+    private fun calculateRecordedContentRect(
+        viewWidth: Int,
+        viewHeight: Int,
+        pose: PoseResult?
+    ): Rect {
+        if (viewWidth <= 0 || viewHeight <= 0) {
+            return Rect(0, 0, 1, 1)
+        }
+
+        val sourceWidth = pose?.sourceWidth?.takeIf { it > 0f } ?: viewWidth.toFloat()
+        val sourceHeight = pose?.sourceHeight?.takeIf { it > 0f } ?: viewHeight.toFloat()
+        val sourceAspect = sourceWidth / sourceHeight
+        val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
+
+        return if (sourceAspect > viewAspect) {
+            val contentHeight = (viewWidth / sourceAspect).toInt().coerceAtLeast(1)
+            val top = ((viewHeight - contentHeight) / 2f).toInt().coerceAtLeast(0)
+            Rect(0, top, viewWidth, (top + contentHeight).coerceAtMost(viewHeight))
+        } else {
+            val contentWidth = (viewHeight * sourceAspect).toInt().coerceAtLeast(1)
+            val left = ((viewWidth - contentWidth) / 2f).toInt().coerceAtLeast(0)
+            Rect(left, 0, (left + contentWidth).coerceAtMost(viewWidth), viewHeight)
         }
     }
 

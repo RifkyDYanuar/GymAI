@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
-import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
 import com.modul.gymai.pose.Keypoint
@@ -27,21 +26,19 @@ class OverlayView @JvmOverloads constructor(
         private const val LOW_CONFIDENCE_ALPHA = 96
         private const val INNER_POINT_ALPHA = 170
         private const val INNER_POINT_SCALE = 0.34f
-        private const val MIN_CONFIDENCE_TO_STABILIZE = 0.35f
-        private const val MICRO_JITTER_THRESHOLD = 0.0025f
-        private const val SMALL_MOVEMENT_THRESHOLD = 0.012f
-        private const val SNAP_MOVEMENT_THRESHOLD = 0.045f
-        private const val SMALL_MOVEMENT_ALPHA = 0.42f
-        private const val DEFAULT_MOVEMENT_ALPHA = 0.72f
-        private const val DELAYED_FRAME_ALPHA = 0.58f
-        private const val ARM_MICRO_JITTER_THRESHOLD = 0.0034f
-        private const val ARM_SMALL_MOVEMENT_THRESHOLD = 0.016f
-        private const val ARM_SNAP_MOVEMENT_THRESHOLD = 0.055f
-        private const val ARM_SMALL_MOVEMENT_ALPHA = 0.26f
-        private const val ARM_DEFAULT_MOVEMENT_ALPHA = 0.58f
-        private const val ARM_DELAYED_FRAME_ALPHA = 0.44f
-        private const val DELAYED_FRAME_THRESHOLD_MS = 70L
-        private const val DELAYED_FRAME_SNAP_MULTIPLIER = 1.35f
+        private const val MIN_CONFIDENCE_TO_STABILIZE = 0.3f
+        private const val MICRO_JITTER_THRESHOLD = 0.0042f
+        private const val SMALL_MOVEMENT_THRESHOLD = 0.019f
+        private const val SNAP_MOVEMENT_THRESHOLD = 0.058f
+        private const val SMALL_MOVEMENT_ALPHA = 0.26f
+        private const val DEFAULT_MOVEMENT_ALPHA = 0.56f
+        private const val ARM_MICRO_JITTER_THRESHOLD = 0.0054f
+        private const val ARM_SMALL_MOVEMENT_THRESHOLD = 0.024f
+        private const val ARM_SNAP_MOVEMENT_THRESHOLD = 0.072f
+        private const val ARM_SMALL_MOVEMENT_ALPHA = 0.14f
+        private const val ARM_DEFAULT_MOVEMENT_ALPHA = 0.38f
+        private const val TRANSIENT_CONFIDENCE_HOLD_FRAMES = 3
+        private const val POSE_KEYPOINT_COUNT = 17
     }
 
     private val keypointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -58,7 +55,7 @@ class OverlayView @JvmOverloads constructor(
     private var isCorrect: Boolean = false
     private var isFrontCamera: Boolean = false
     private var lastDisplayKeypoints: List<Keypoint>? = null
-    private var lastPoseUpdateRealtimeMs = 0L
+    private var lowConfidenceHoldFrames = IntArray(POSE_KEYPOINT_COUNT)
     private val armKeypoints = setOf(
         Keypoint.LEFT_SHOULDER,
         Keypoint.RIGHT_SHOULDER,
@@ -80,17 +77,14 @@ class OverlayView @JvmOverloads constructor(
 
     fun updatePose(pose: PoseResult?, correct: Boolean = true) {
         this.isCorrect = correct
-        val now = SystemClock.elapsedRealtime()
-        val frameGapMs = if (lastPoseUpdateRealtimeMs == 0L) 0L else now - lastPoseUpdateRealtimeMs
-        this.poseResult = pose?.copy(keypoints = stabilizeDisplayKeypoints(pose.keypoints, frameGapMs))
-        lastPoseUpdateRealtimeMs = now
+        this.poseResult = pose?.copy(keypoints = stabilizeDisplayKeypoints(pose.keypoints))
         invalidate()
     }
 
     fun clear() {
         poseResult = null
         lastDisplayKeypoints = null
-        lastPoseUpdateRealtimeMs = 0L
+        lowConfidenceHoldFrames = IntArray(POSE_KEYPOINT_COUNT)
         invalidate()
     }
 
@@ -174,55 +168,58 @@ class OverlayView @JvmOverloads constructor(
         return bounds.top + (normalizedY.coerceIn(0f, 1f) * bounds.height())
     }
 
-    private fun stabilizeDisplayKeypoints(currentKeypoints: List<Keypoint>, frameGapMs: Long): List<Keypoint> {
+    private fun stabilizeDisplayKeypoints(currentKeypoints: List<Keypoint>): List<Keypoint> {
         val previousKeypoints = lastDisplayKeypoints
         if (previousKeypoints == null || previousKeypoints.size != currentKeypoints.size) {
             lastDisplayKeypoints = currentKeypoints
             return currentKeypoints
         }
 
-        val delayedFrame = frameGapMs >= DELAYED_FRAME_THRESHOLD_MS
-
         val stabilized = currentKeypoints.mapIndexed { index, current ->
             val previous = previousKeypoints[index]
+            val isArmKeypoint = index in armKeypoints
+            val microJitterThreshold = if (isArmKeypoint) ARM_MICRO_JITTER_THRESHOLD else MICRO_JITTER_THRESHOLD
+            val smallMovementThreshold = if (isArmKeypoint) ARM_SMALL_MOVEMENT_THRESHOLD else SMALL_MOVEMENT_THRESHOLD
+            val snapMovementThreshold = if (isArmKeypoint) ARM_SNAP_MOVEMENT_THRESHOLD else SNAP_MOVEMENT_THRESHOLD
 
-            if (current.confidence < MIN_CONFIDENCE_TO_STABILIZE || previous.confidence < MIN_CONFIDENCE_TO_STABILIZE) {
-                current
-            } else {
-                val dx = current.x - previous.x
-                val dy = current.y - previous.y
-                val movement = kotlin.math.sqrt(dx * dx + dy * dy)
-                val isArmKeypoint = index in armKeypoints
-                val microJitterThreshold = if (isArmKeypoint) ARM_MICRO_JITTER_THRESHOLD else MICRO_JITTER_THRESHOLD
-                val smallMovementThreshold = if (isArmKeypoint) ARM_SMALL_MOVEMENT_THRESHOLD else SMALL_MOVEMENT_THRESHOLD
-                val baseSnapMovementThreshold = if (isArmKeypoint) ARM_SNAP_MOVEMENT_THRESHOLD else SNAP_MOVEMENT_THRESHOLD
-                val snapMovementThreshold = if (delayedFrame) {
-                    baseSnapMovementThreshold * DELAYED_FRAME_SNAP_MULTIPLIER
-                } else {
-                    baseSnapMovementThreshold
+            if (current.confidence < MIN_CONFIDENCE_TO_STABILIZE) {
+                if (
+                    previous.confidence >= MIN_CONFIDENCE_TO_STABILIZE &&
+                    lowConfidenceHoldFrames[index] < TRANSIENT_CONFIDENCE_HOLD_FRAMES
+                ) {
+                    lowConfidenceHoldFrames[index] += 1
+                    return@mapIndexed previous.copy(confidence = maxOf(current.confidence, previous.confidence * 0.9f))
                 }
+                lowConfidenceHoldFrames[index] = 0
+                return@mapIndexed current
+            }
 
-                when {
-                    movement < microJitterThreshold ->
-                        previous.copy(confidence = current.confidence)
-                    movement > snapMovementThreshold ->
-                        current
-                    else -> {
-                        val alpha = if (movement < smallMovementThreshold) {
-                            if (isArmKeypoint) ARM_SMALL_MOVEMENT_ALPHA else SMALL_MOVEMENT_ALPHA
-                        } else {
-                            if (isArmKeypoint) {
-                                if (delayedFrame) ARM_DELAYED_FRAME_ALPHA else ARM_DEFAULT_MOVEMENT_ALPHA
-                            } else {
-                                if (delayedFrame) DELAYED_FRAME_ALPHA else DEFAULT_MOVEMENT_ALPHA
-                            }
-                        }
-                        Keypoint(
-                            x = lerp(previous.x, current.x, alpha),
-                            y = lerp(previous.y, current.y, alpha),
-                            confidence = current.confidence
-                        )
+            lowConfidenceHoldFrames[index] = 0
+            if (previous.confidence < MIN_CONFIDENCE_TO_STABILIZE) {
+                return@mapIndexed current
+            }
+
+            val dx = current.x - previous.x
+            val dy = current.y - previous.y
+            val movement = kotlin.math.sqrt(dx * dx + dy * dy)
+
+            when {
+                movement < microJitterThreshold ->
+                    previous.copy(confidence = current.confidence)
+                movement > snapMovementThreshold ->
+                    current
+                else -> {
+                    val baseAlpha = if (movement < smallMovementThreshold) {
+                        if (isArmKeypoint) ARM_SMALL_MOVEMENT_ALPHA else SMALL_MOVEMENT_ALPHA
+                    } else {
+                        if (isArmKeypoint) ARM_DEFAULT_MOVEMENT_ALPHA else DEFAULT_MOVEMENT_ALPHA
                     }
+                    val alpha = confidenceAwareAlpha(baseAlpha, current.confidence, previous.confidence)
+                    Keypoint(
+                        x = lerp(previous.x, current.x, alpha),
+                        y = lerp(previous.y, current.y, alpha),
+                        confidence = current.confidence
+                    )
                 }
             }
         }
@@ -233,5 +230,16 @@ class OverlayView @JvmOverloads constructor(
 
     private fun lerp(start: Float, end: Float, alpha: Float): Float {
         return start + (end - start) * alpha
+    }
+
+    private fun confidenceAwareAlpha(baseAlpha: Float, currentConfidence: Float, previousConfidence: Float): Float {
+        val minConfidence = minOf(currentConfidence, previousConfidence)
+        val confidenceScale = when {
+            minConfidence < 0.4f -> 0.62f
+            minConfidence < 0.55f -> 0.78f
+            minConfidence < 0.7f -> 0.9f
+            else -> 1f
+        }
+        return (baseAlpha * confidenceScale).coerceIn(0.1f, 0.9f)
     }
 }

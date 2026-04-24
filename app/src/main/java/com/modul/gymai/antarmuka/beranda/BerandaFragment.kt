@@ -14,6 +14,7 @@ import com.modul.gymai.databinding.FragmentBerandaBinding
 import com.modul.gymai.ui.MaterialSymbols
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Color
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -104,14 +105,28 @@ class BerandaFragment : Fragment() {
             binding.tvTodayReps.text = reps.toString()
         }
 
-        viewModel.totalSessions.observe(viewLifecycleOwner) { _ ->
-            // Optionally calculate avg accuracy across all sessions if not using repository method
-            // For now, let's keep it simple or use another observed field
+        viewModel.bestEvaluation.observe(viewLifecycleOwner) { bestEvaluation ->
+            binding.tvBestEvaluationTitle.text = bestEvaluation.title
+            binding.tvBestEvaluationHeadline.text = bestEvaluation.headline
+            binding.tvBestEvaluationSupporting.text = bestEvaluation.supporting
+            binding.tvBestEvaluationFooter.text = bestEvaluation.footer
         }
-        
-        // We might want an actual average accuracy LiveData in VM
-        // For this demo, let's just make it look good if data is missing
-        
+
+        viewModel.trainingImprovement.observe(viewLifecycleOwner) { improvement ->
+            binding.tvImprovementTitle.text = improvement.title
+            binding.tvImprovementHeadline.text = improvement.headline
+            binding.tvImprovementSupporting.text = improvement.supporting
+            binding.tvImprovementFooter.text = improvement.footer
+
+            val accentColor = when {
+                improvement.isPositive -> Color.parseColor("#C1121F")
+                improvement.isNeutral -> Color.parseColor("#B45309")
+                else -> Color.parseColor("#991B1B")
+            }
+            binding.tvImprovementHeadline.setTextColor(accentColor)
+            binding.tvImprovementSupporting.setTextColor(accentColor)
+        }
+
         viewModel.recentSessions.observe(viewLifecycleOwner) { sessions ->
             recentActivityAdapter.submitList(sessions)
         }

@@ -92,7 +92,7 @@
                         <ImageView
                             android:layout_width="match_parent"
                             android:layout_height="132dp"
-                            android:src="@drawable/squat"
+                            android:src="@drawable/squatt"
                             android:scaleType="centerCrop"
                             android:contentDescription="Squat" />
 
@@ -123,11 +123,11 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Menengah"
-                                android:textColor="#F59E0B"
+                                android:text="Pemula"
+                                android:textColor="@color/success"
                                 android:textSize="10sp"
                                 android:fontFamily="@font/poppins"
-                                android:background="@drawable/bg_chip_yellow"
+                                android:background="@drawable/bg_chip_benar"
                                 android:paddingStart="6dp"
                                 android:paddingEnd="6dp"
                                 android:paddingTop="2dp"
@@ -160,7 +160,7 @@
                         <ImageView
                             android:layout_width="match_parent"
                             android:layout_height="132dp"
-                            android:src="@drawable/bicepcurl"
+                            android:src="@drawable/bicepscurl"
                             android:scaleType="centerCrop"
                             android:contentDescription="Biceps Curl" />
 
@@ -237,7 +237,7 @@
                         <ImageView
                             android:layout_width="match_parent"
                             android:layout_height="132dp"
-                            android:src="@drawable/lateralraise"
+                            android:src="@drawable/lateralraises"
                             android:scaleType="centerCrop"
                             android:contentDescription="Lateral Raise" />
 
@@ -305,7 +305,7 @@
                         <ImageView
                             android:layout_width="match_parent"
                             android:layout_height="132dp"
-                            android:src="@drawable/shoulderpress"
+                            android:src="@drawable/shoulderpresss"
                             android:scaleType="centerCrop"
                             android:contentDescription="Shoulder Press" />
 
@@ -337,10 +337,10 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Menengah"
-                                android:textColor="#F59E0B"
+                                android:textColor="@color/success"
                                 android:textSize="10sp"
                                 android:fontFamily="@font/poppins"
-                                android:background="@drawable/bg_chip_yellow"
+                                android:background="@drawable/bg_chip_benar"
                                 android:paddingStart="6dp"
                                 android:paddingEnd="6dp"
                                 android:paddingTop="2dp"

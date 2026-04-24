@@ -79,6 +79,9 @@ dependencies {
     // ML Kit Pose Detection
     implementation(libs.mlkit.pose.detection)
 
+    // TensorFlow Lite
+    implementation(libs.tensorflow.lite)
+
     // Media3 playback
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)

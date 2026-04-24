@@ -39,27 +39,83 @@ class CameraManager(
     private val onFrameReady: (ImageProxy) -> Unit
 ) {
 
+    enum class PerformanceMode {
+        DEFAULT,
+        LIVE_PERFORMANCE,
+        CONSERVATIVE_LIVE_PERFORMANCE
+    }
+
     companion object {
         private const val TAG = "CameraManager"
         private const val MAIN_THREAD_BIND_TIMEOUT_MS = 5000L
-        private val DEFAULT_PREVIEW_RESOLUTIONS = listOf(
-            Size(1280, 720),
-            Size(960, 540),
-            Size(640, 480),
+        private data class CameraPerformanceProfile(
+            val backPreviewResolutions: List<Size>,
+            val frontPreviewResolutions: List<Size>,
+            val backAnalysisResolutions: List<Size>,
+            val frontAnalysisResolutions: List<Size>
         )
-        private val STABLE_PREVIEW_RESOLUTIONS = listOf(
-            Size(960, 540),
-            Size(640, 480),
+
+        private val DEFAULT_CAMERA_PROFILE = CameraPerformanceProfile(
+            backPreviewResolutions = listOf(
+                Size(1280, 720),
+                Size(960, 540),
+                Size(640, 480),
+            ),
+            frontPreviewResolutions = listOf(
+                Size(960, 540),
+                Size(640, 480),
+            ),
+            backAnalysisResolutions = listOf(
+                Size(640, 480),
+                Size(480, 360),
+            ),
+            frontAnalysisResolutions = listOf(
+                Size(480, 360),
+                Size(640, 480),
+            )
         )
-        private val FRONT_CAMERA_PREVIEW_RESOLUTIONS = listOf(
-            Size(640, 480),
-            Size(960, 540),
+
+        private val LIVE_PERFORMANCE_PROFILE = CameraPerformanceProfile(
+            backPreviewResolutions = listOf(
+                Size(1280, 720),
+                Size(960, 540),
+            ),
+            frontPreviewResolutions = listOf(
+                Size(960, 540),
+                Size(640, 480),
+            ),
+            backAnalysisResolutions = listOf(
+                Size(480, 360),
+                Size(640, 480),
+            ),
+            frontAnalysisResolutions = listOf(
+                Size(480, 360),
+            )
         )
-        private val DEFAULT_ANALYSIS_RESOLUTIONS = listOf(
-            Size(480, 360),
+
+        private val CONSERVATIVE_LIVE_PERFORMANCE_PROFILE = CameraPerformanceProfile(
+            backPreviewResolutions = listOf(
+                Size(960, 540),
+                Size(640, 480),
+            ),
+            frontPreviewResolutions = listOf(
+                Size(640, 480),
+            ),
+            backAnalysisResolutions = listOf(
+                Size(480, 360),
+            ),
+            frontAnalysisResolutions = listOf(
+                Size(480, 360),
+            )
+        )
+
+        private val FRONT_CAMERA_RECORDING_PREVIEW_RESOLUTIONS = listOf(
             Size(640, 480),
         )
         private val LOW_LOAD_ANALYSIS_RESOLUTIONS = listOf(
+            Size(480, 360),
+        )
+        private val FRONT_CAMERA_RECORDING_ANALYSIS_RESOLUTIONS = listOf(
             Size(480, 360),
         )
     }
@@ -75,6 +131,7 @@ class CameraManager(
     private var recordingOutputFile: File? = null
     private var recordingFinalizeCallback: ((String?) -> Unit)? = null
     private var shouldBindVideoCapture = false
+    private var performanceMode = PerformanceMode.DEFAULT
     @Volatile
     private var isPreparingEvaluationRecording = false
 
@@ -98,69 +155,72 @@ class CameraManager(
 
         val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
         val targetRotation = previewView.display?.rotation ?: Surface.ROTATION_0
-        val resolutionPairs = buildResolutionPairs()
         val shouldAttachVideoCapture = shouldAttachVideoCapture()
 
-        for ((previewSize, analysisSize) in resolutionPairs) {
-            try {
-                val preview = Preview.Builder()
-                    .setTargetRotation(targetRotation)
-                    .setTargetResolution(previewSize)
-                    .build()
-                    .also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
-
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setTargetRotation(targetRotation)
-                    .setTargetResolution(analysisSize)
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also { analysis ->
-                        analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                            onFrameReady(imageProxy)
-                        }
-                    }
-
-                val useCases = mutableListOf<UseCase>(preview, imageAnalysis)
-
-                if (shouldAttachVideoCapture) {
-                    val recorder = Recorder.Builder()
-                        .setQualitySelector(
-                            QualitySelector.fromOrderedList(
-                                listOf(Quality.LOWEST, Quality.SD),
-                                FallbackStrategy.lowerQualityOrHigherThan(Quality.LOWEST)
-                            )
-                        )
+        for ((profileName, resolutionPairs) in buildResolutionPairCandidates()) {
+            for ((previewSize, analysisSize) in resolutionPairs) {
+                try {
+                    val preview = Preview.Builder()
+                        .setTargetRotation(targetRotation)
+                        .setTargetResolution(previewSize)
                         .build()
-                    val videoCapture = VideoCapture.withOutput(recorder).also {
-                        it.targetRotation = targetRotation
-                    }
-                    this.videoCapture = videoCapture
-                    useCases += videoCapture
-                } else {
-                    this.videoCapture = null
-                }
+                        .also {
+                            it.surfaceProvider = previewView.surfaceProvider
+                        }
 
-                cameraProvider.unbindAll()
-                boundCamera = cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    cameraSelector,
-                    *useCases.toTypedArray()
-                )
-                applyExposureForCurrentLens()
-                Log.d(
-                    TAG,
-                    "Camera bound successfully. Preview=${previewSize.width}x${previewSize.height}, " +
-                        "Analysis=${analysisSize.width}x${analysisSize.height}, VideoCapture=$shouldAttachVideoCapture"
-                )
-                return true
-            } catch (e: Exception) {
-                Log.w(
-                    TAG,
-                    "Use case bind failed for Preview=${previewSize.width}x${previewSize.height}, " +
-                        "Analysis=${analysisSize.width}x${analysisSize.height}: ${e.message}"
-                )
+                    val imageAnalysis = ImageAnalysis.Builder()
+                        .setTargetRotation(targetRotation)
+                        .setTargetResolution(analysisSize)
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                        .also { analysis ->
+                            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                                onFrameReady(imageProxy)
+                            }
+                        }
+
+                    val useCases = mutableListOf<UseCase>(preview, imageAnalysis)
+
+                    if (shouldAttachVideoCapture) {
+                        val recorder = Recorder.Builder()
+                            .setQualitySelector(
+                                QualitySelector.fromOrderedList(
+                                    preferredVideoQualities(),
+                                    FallbackStrategy.lowerQualityOrHigherThan(Quality.LOWEST)
+                                )
+                            )
+                            .build()
+                        val videoCapture = VideoCapture.withOutput(recorder).also {
+                            it.targetRotation = targetRotation
+                        }
+                        this.videoCapture = videoCapture
+                        useCases += videoCapture
+                    } else {
+                        this.videoCapture = null
+                    }
+
+                    cameraProvider.unbindAll()
+                    boundCamera = cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        cameraSelector,
+                        *useCases.toTypedArray()
+                    )
+                    applyExposureForCurrentLens()
+                    Log.d(
+                        TAG,
+                        "Camera bound successfully. Profile=$profileName, " +
+                            "Preview=${previewSize.width}x${previewSize.height}, " +
+                            "Analysis=${analysisSize.width}x${analysisSize.height}, VideoCapture=$shouldAttachVideoCapture"
+                    )
+                    return true
+                } catch (e: Exception) {
+                    Log.w(
+                        TAG,
+                        "Use case bind failed for Profile=$profileName, " +
+                            "Preview=${previewSize.width}x${previewSize.height}, " +
+                            "Analysis=${analysisSize.width}x${analysisSize.height}: ${e.message}"
+                    )
+                }
             }
         }
 
@@ -168,10 +228,10 @@ class CameraManager(
         return false
     }
 
-    private fun buildResolutionPairs(): List<Pair<Size, Size>> {
+    private fun buildResolutionPairs(profile: CameraPerformanceProfile): List<Pair<Size, Size>> {
         val pairs = mutableListOf<Pair<Size, Size>>()
-        val previewResolutions = preferredPreviewResolutions()
-        val analysisResolutions = preferredAnalysisResolutions()
+        val previewResolutions = preferredPreviewResolutions(profile)
+        val analysisResolutions = preferredAnalysisResolutions(profile)
         for (previewSize in previewResolutions) {
             for (analysisSize in analysisResolutions) {
                 pairs += previewSize to analysisSize
@@ -180,25 +240,52 @@ class CameraManager(
         return pairs
     }
 
-    private fun shouldAttachVideoCapture(): Boolean {
-        return shouldBindVideoCapture && lensFacing != CameraSelector.LENS_FACING_FRONT
-    }
-
-    private fun preferredPreviewResolutions(): List<Size> {
-        return when {
-            lensFacing == CameraSelector.LENS_FACING_FRONT && shouldBindVideoCapture -> FRONT_CAMERA_PREVIEW_RESOLUTIONS
-            lensFacing == CameraSelector.LENS_FACING_FRONT -> STABLE_PREVIEW_RESOLUTIONS
-            shouldBindVideoCapture -> STABLE_PREVIEW_RESOLUTIONS + Size(1280, 720)
-            else -> DEFAULT_PREVIEW_RESOLUTIONS
+    private fun buildResolutionPairCandidates(): List<Pair<String, List<Pair<Size, Size>>>> {
+        return profileCandidates().map { (name, profile) ->
+            name to buildResolutionPairs(profile)
         }
     }
 
-    private fun preferredAnalysisResolutions(): List<Size> {
+    private fun shouldAttachVideoCapture(): Boolean = shouldBindVideoCapture
+
+    private fun preferredPreviewResolutions(profile: CameraPerformanceProfile): List<Size> {
         return when {
+            lensFacing == CameraSelector.LENS_FACING_FRONT && shouldBindVideoCapture ->
+                FRONT_CAMERA_RECORDING_PREVIEW_RESOLUTIONS
+            lensFacing == CameraSelector.LENS_FACING_FRONT -> profile.frontPreviewResolutions
+            shouldBindVideoCapture -> profile.backPreviewResolutions
+            else -> profile.backPreviewResolutions
+        }
+    }
+
+    private fun preferredAnalysisResolutions(profile: CameraPerformanceProfile): List<Size> {
+        return when {
+            lensFacing == CameraSelector.LENS_FACING_FRONT && shouldBindVideoCapture ->
+                FRONT_CAMERA_RECORDING_ANALYSIS_RESOLUTIONS
             lensFacing == CameraSelector.LENS_FACING_FRONT || shouldBindVideoCapture ->
-                LOW_LOAD_ANALYSIS_RESOLUTIONS + DEFAULT_ANALYSIS_RESOLUTIONS
-            else -> DEFAULT_ANALYSIS_RESOLUTIONS
+                (LOW_LOAD_ANALYSIS_RESOLUTIONS + profile.frontAnalysisResolutions)
+            else -> profile.backAnalysisResolutions
         }.distinct()
+    }
+
+    private fun profileCandidates(): List<Pair<String, CameraPerformanceProfile>> {
+        return when (performanceMode) {
+            PerformanceMode.DEFAULT -> listOf(
+                "default" to DEFAULT_CAMERA_PROFILE,
+                "live_performance" to LIVE_PERFORMANCE_PROFILE
+            )
+            PerformanceMode.LIVE_PERFORMANCE -> listOf(
+                "live_performance" to LIVE_PERFORMANCE_PROFILE,
+                "conservative_live_performance" to CONSERVATIVE_LIVE_PERFORMANCE_PROFILE
+            )
+            PerformanceMode.CONSERVATIVE_LIVE_PERFORMANCE -> listOf(
+                "conservative_live_performance" to CONSERVATIVE_LIVE_PERFORMANCE_PROFILE
+            )
+        }
+    }
+
+    private fun preferredVideoQualities(): List<Quality> {
+        return listOf(Quality.LOWEST)
     }
 
     private fun bindCameraUseCasesOnMainThread(): Boolean {
@@ -239,6 +326,14 @@ class CameraManager(
 
     fun isFrontCamera(): Boolean = lensFacing == CameraSelector.LENS_FACING_FRONT
 
+    fun setPerformanceMode(mode: PerformanceMode) {
+        if (performanceMode == mode) return
+        performanceMode = mode
+        if (cameraProvider != null) {
+            bindCameraUseCasesOnMainThread()
+        }
+    }
+
     fun isEvaluationRecording(): Boolean = activeRecording != null
 
     fun isPreparingEvaluationRecording(): Boolean = isPreparingEvaluationRecording
@@ -265,12 +360,6 @@ class CameraManager(
         if (!tryBeginEvaluationRecordingPreparation()) return
 
         try {
-            if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
-                Log.w(TAG, "Skipping VideoCapture on front camera to keep preview stable")
-                onFinalized(null)
-                return
-            }
-
             if (!shouldBindVideoCapture || videoCapture == null) {
                 shouldBindVideoCapture = true
                 val bindSucceeded = bindCameraUseCasesOnMainThread()

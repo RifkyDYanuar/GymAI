@@ -6,13 +6,12 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- Camera Preview (Not Full Screen) -->
+    <!-- Camera Preview (Full Screen) -->
     <androidx.camera.view.PreviewView
         android:id="@+id/preview_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
-        app:layout_constraintTop_toBottomOf="@id/top_bar"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -34,6 +33,7 @@
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:elevation="12dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="16dp"
@@ -251,7 +251,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="PANDUAN PENEMPATAN"
+            android:text="Panduan Evaluasi"
             android:textColor="@color/primary"
             android:textSize="18sp"
             android:textStyle="bold"
@@ -261,7 +261,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Ikuti langkah berikut sebelum mulai"
+            android:text="Atur posisi dulu supaya evaluasi lebih akurat"
             android:textColor="@color/white_70"
             android:textSize="13sp"
             android:layout_marginTop="4dp"
@@ -289,7 +289,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Cahaya Terang: Pastikan tubuh terlihat jelas"
+                    android:text="Cari tempat yang cukup terang supaya tubuh terlihat jelas."
                     android:textColor="@color/white"
                     android:textSize="14sp"
                     android:layout_marginStart="16dp"
@@ -312,7 +312,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Jarak: Berdiri 2-3 meter dari kamera"
+                    android:text="Atur jarak sekitar 1,5-2,5 meter, lalu sesuaikan sampai kepala dan kaki tetap masuk frame."
                     android:textColor="@color/white"
                     android:textSize="14sp"
                     android:layout_marginStart="16dp"
@@ -335,7 +335,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Seluruh Tubuh: Kepala hingga kaki harus terlihat"
+                    android:text="Pastikan tubuh terlihat utuh dari kepala sampai kaki."
                     android:textColor="@color/white"
                     android:textSize="14sp"
                     android:layout_marginStart="16dp"
@@ -357,7 +357,30 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Stabil: Letakkan HP pada posisi tegak/diam"
+                    android:text="Letakkan HP tegak dan stabil, sebaiknya gunakan tripod atau penyangga saat evaluasi."
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:layout_marginStart="16dp"
+                    android:fontFamily="@font/poppins" />
+            </LinearLayout>
+
+            <!-- Rule 5 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="20dp">
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_check_circle"
+                    android:tag="ms:fitness_center"
+                    app:tint="@color/white" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Lakukan gerakan sesuai latihan yang dipilih dan ikuti arahan di layar."
                     android:textColor="@color/white"
                     android:textSize="14sp"
                     android:layout_marginStart="16dp"
@@ -392,7 +415,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Panduan sedang dibacakan, tunggu sebentar"
+            android:text="Panduan evaluasi sedang dibacakan, tunggu sebentar"
             android:textColor="@color/white_60"
             android:textSize="13sp"
             android:gravity="center"

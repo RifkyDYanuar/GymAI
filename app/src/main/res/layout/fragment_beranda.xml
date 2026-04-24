@@ -25,71 +25,123 @@
                 android:paddingTop="48dp"
                 android:paddingBottom="20dp">
 
-                <!-- Header: Logo & Greeting Centered -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
+                    android:layout_marginTop="8dp"
                     android:gravity="center"
-                    android:layout_marginTop="8dp">
+                    android:orientation="vertical">
 
                     <ImageView
                         android:layout_width="200dp"
                         android:layout_height="60dp"
                         android:layout_marginBottom="16dp"
-                        android:src="@drawable/logo"
+                        android:adjustViewBounds="true"
                         android:scaleType="fitCenter"
-                        android:adjustViewBounds="true" />
+                        android:src="@drawable/logo" />
 
                     <TextView
                         android:id="@+id/tv_greeting"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:fontFamily="@font/poppins"
                         android:text="Halo, Selamat Berlatih!"
                         android:textColor="#1A1A2E"
                         android:textSize="20sp"
-                        android:textStyle="bold"
-                        android:fontFamily="@font/poppins" />
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/tv_realtime_clock"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="@font/poppins"
                         android:text="12:00:00"
                         android:textColor="#C1121F"
                         android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="@font/poppins" />
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/tv_date"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:fontFamily="@font/poppins"
                         android:text="Sabtu, 21 Feb 2026"
                         android:textColor="#888888"
-                        android:textSize="12sp"
-                        android:layout_marginTop="2dp"
-                        android:fontFamily="@font/poppins" />
+                        android:textSize="12sp" />
 
                 </LinearLayout>
 
-                <!-- Stats summary card -->
                 <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/btn_start_detection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="4dp"
-                    app:strokeWidth="0dp"
-                    app:cardBackgroundColor="#C1121F">
+                    android:layout_marginTop="20dp"
+                    app:cardBackgroundColor="#F1F3F5"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#E0E0E0"
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:padding="20dp"
-                        android:gravity="center_vertical">
+                        android:padding="16dp">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:src="@drawable/ic_camera"
+                            android:tag="ms:camera_alt"
+                            app:tint="#C1121F" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="16dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins"
+                                android:text="Siap untuk latihan baru?"
+                                android:textColor="#1A1A2E"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins"
+                                android:text="Pilih gerakan dan mulai deteksi sekarang"
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
+
+                        </LinearLayout>
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    app:cardBackgroundColor="#C1121F"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="4dp"
+                    app:strokeWidth="0dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="20dp">
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -100,20 +152,20 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins"
                                 android:text="Total Repetisi Hari Ini"
                                 android:textColor="#E0E0E0"
-                                android:textSize="12sp"
-                                android:fontFamily="@font/poppins" />
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tv_today_reps"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins"
                                 android:text="128"
                                 android:textColor="@color/white"
                                 android:textSize="32sp"
-                                android:textStyle="bold"
-                                android:fontFamily="@font/poppins" />
+                                android:textStyle="bold" />
 
                         </LinearLayout>
 
@@ -142,123 +194,208 @@
             android:orientation="vertical"
             android:paddingBottom="80dp">
 
-            <!-- Information Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingHorizontal="20dp"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical"
+                android:paddingHorizontal="20dp">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="@color/white"
+                    app:cardCornerRadius="18dp"
+                    app:cardElevation="3dp"
+                    app:strokeColor="#EEF1F5"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="132dp"
+                        android:orientation="vertical"
+                        android:padding="18dp">
+
+                        <TextView
+                            android:id="@+id/tv_best_evaluation_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/poppins"
+                            android:text="Evaluasi Terbaik"
+                            android:textColor="#6B7280"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tv_best_evaluation_headline"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:fontFamily="@font/poppins"
+                            android:maxLines="2"
+                            android:text="Belum ada evaluasi"
+                            android:textColor="#111827"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            tools:text="Bicep Curl 98%" />
+
+                        <TextView
+                            android:id="@+id/tv_best_evaluation_supporting"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="@font/poppins"
+                            android:maxLines="2"
+                            android:text="Selesaikan sesi latihan untuk melihat hasil terbaik."
+                            android:textColor="#4B5563"
+                            android:textSize="12sp"
+                            tools:text="12 repetisi terbaik" />
+
+                        <TextView
+                            android:id="@+id/tv_best_evaluation_footer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:fontFamily="@font/poppins"
+                            android:text="Akurasi dan repetisi terbaik akan tampil di sini"
+                            android:textColor="#9CA3AF"
+                            android:textSize="11sp"
+                            tools:text="23 Apr 2026" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardBackgroundColor="#F7FFFFFF"
+                    app:cardCornerRadius="18dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#C1121F"
+                    app:strokeWidth="1.2dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="132dp"
+                        android:orientation="vertical"
+                        android:padding="18dp">
+
+                        <TextView
+                            android:id="@+id/tv_improvement_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/poppins"
+                            android:text="Peningkatan Latihan"
+                            android:textColor="#C1121F"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tv_improvement_headline"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:fontFamily="@font/poppins"
+                            android:maxLines="2"
+                            android:text="Belum cukup data"
+                            android:textColor="#C1121F"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            tools:text="Meningkat" />
+
+                        <TextView
+                            android:id="@+id/tv_improvement_supporting"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="@font/poppins"
+                            android:maxLines="2"
+                            android:text="Butuh minimal dua periode latihan untuk membaca progres."
+                            android:textColor="#B45309"
+                            android:textSize="12sp"
+                            tools:text="+14 repetisi (+28%)" />
+
+                        <TextView
+                            android:id="@+id/tv_improvement_footer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:fontFamily="@font/poppins"
+                            android:text="7 hari terakhir dibanding 7 hari sebelumnya"
+                            android:textColor="#7F1D1D"
+                            android:textSize="11sp" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
                 android:gravity="center_vertical"
-                android:layout_marginTop="16dp">
+                android:orientation="horizontal"
+                android:paddingHorizontal="20dp">
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:fontFamily="@font/poppins"
                     android:text="Jelajahi Gerakan"
                     android:textColor="#1A1A2E"
                     android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:fontFamily="@font/poppins" />
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/btn_see_all_exercises"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="@font/poppins"
                     android:text="Lihat Semua"
                     android:textColor="#C1121F"
                     android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:fontFamily="@font/poppins" />
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_exercise_info"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:orientation="horizontal"
                 android:paddingHorizontal="20dp"
                 android:paddingTop="12dp"
                 android:paddingBottom="16dp"
-                android:clipToPadding="false"
-                android:orientation="horizontal"
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                 tools:listitem="@layout/item_exercise_info_home" />
 
-            <!-- Recent Activity Section -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="8dp"
+                android:fontFamily="@font/poppins"
                 android:text="Aktivitas Terakhir"
                 android:textColor="#1A1A2E"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginHorizontal="20dp"
-                android:layout_marginTop="8dp"
-                android:fontFamily="@font/poppins" />
+                android:textStyle="bold" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_recent_activity"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:paddingHorizontal="20dp"
                 android:nestedScrollingEnabled="false"
+                android:paddingHorizontal="20dp"
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                 tools:listitem="@layout/item_recent_activity_home" />
-
-            <!-- Quick Start Button (Banner) -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/btn_start_detection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="20dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="0dp"
-                app:strokeWidth="1dp"
-                app:strokeColor="#E0E0E0"
-                app:cardBackgroundColor="#F1F3F5">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:padding="16dp"
-                    android:gravity="center_vertical">
-
-                    <ImageView
-                        android:layout_width="40dp"
-                        android:layout_height="40dp"
-                        android:src="@drawable/ic_camera"
-                        android:tag="ms:camera_alt"
-                        app:tint="#C1121F" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="16dp"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Siap untuk latihan baru?"
-                            android:textColor="#1A1A2E"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:fontFamily="@font/poppins" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Pilih gerakan dan mulai deteksi sekarang"
-                            android:textColor="#888888"
-                            android:textSize="11sp"
-                            android:fontFamily="@font/poppins" />
-                    </LinearLayout>
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

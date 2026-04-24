@@ -21,6 +21,9 @@ interface WorkoutSessionDao {
     @Query("SELECT * FROM workout_sessions ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentSessions(limit: Int): List<WorkoutSession>
 
+    @Query("SELECT * FROM workout_sessions ORDER BY timestamp DESC")
+    suspend fun getAllSessionsSnapshot(): List<WorkoutSession>
+
     @Query("SELECT SUM(totalReps) FROM workout_sessions WHERE timestamp > :sinceTimestamp")
     suspend fun getTotalRepsSince(sinceTimestamp: Long): Int?
 

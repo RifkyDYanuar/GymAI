@@ -55,10 +55,21 @@ class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQ
         }
     }
 
-    fun onBicepRepCompleted(shouldCountRep: Boolean) {
-        if (exerciseType == ExerciseType.BICEP_CURL && shouldCountRep) {
+    fun onValidatedRepCompleted(shouldCountRep: Boolean) {
+        if (
+            shouldCountRep &&
+            (
+                exerciseType == ExerciseType.BICEP_CURL ||
+                    exerciseType == ExerciseType.LATERAL_RAISE ||
+                    exerciseType == ExerciseType.SHOULDER_PRESS
+                )
+        ) {
             repCount++
         }
+    }
+
+    fun onBicepRepCompleted(shouldCountRep: Boolean) {
+        onValidatedRepCompleted(shouldCountRep)
     }
 
     private fun updateLateralRaise(angle: Float) {

@@ -24,9 +24,9 @@ object ExerciseRepository {
             Exercise(
                 id = "1",
                 name = "Squat",
-                level = "Menengah",
+                level = "Pemula",
                 target = "Otot: Paha, Bokong, Betis",
-                imageResId = R.drawable.squat,
+                imageResId = R.drawable.squatt,
                 type = ExerciseType.SQUAT,
                 description = "Melatih kekuatan dan massa otot tubuh bagian bawah",
                 primaryMuscleGroup = "Quadriceps & Glutes",
@@ -40,7 +40,7 @@ object ExerciseRepository {
                 name = "Biceps Curl",
                 level = "Pemula",
                 target = "Otot: Biseps, Lengan Atas",
-                imageResId = R.drawable.bicepcurl,
+                imageResId = R.drawable.bicepscurl,
                 type = ExerciseType.BICEP_CURL,
                 description = "Fokus pada otot bicep dan kekuatan tarikan lengan",
                 primaryMuscleGroup = "Biceps",
@@ -54,28 +54,28 @@ object ExerciseRepository {
                 name = "Lateral Raise",
                 level = "Pemula",
                 target = "Otot: Bahu (Deltoid Lateral)",
-                imageResId = R.drawable.squat,
+                imageResId = R.drawable.lateralraises,
                 type = ExerciseType.LATERAL_RAISE,
                 description = "Melatih otot bahu bagian samping untuk lebar bahu ideal",
                 primaryMuscleGroup = "Lateral Deltoids",
                 equipment = "Dumbbell",
                 muscleTags = listOf("Lateral Deltoid", "Anterior Deltoid", "Trapezius"),
                 stepCount = 5,
-                firstStepBrief = "Pastikan seluruh tubuh terlihat dan tubuh menghadap depan ke kamera"
+                firstStepBrief = "Pastikan seluruh tubuh terlihat dan tubuh menghadap kedepan kamera"
             ),
             Exercise(
                 id = "4",
                 name = "Shoulder Press",
-                level = "Menengah",
+                level = "Pemula",
                 target = "Otot: Bahu, Triceps",
-                imageResId = R.drawable.press,
+                imageResId = R.drawable.shoulderpresss,
                 type = ExerciseType.SHOULDER_PRESS,
                 description = "Meningkatkan kekuatan dorongan ke atas",
                 primaryMuscleGroup = "Shoulders & Triceps",
                 equipment = "Dumbbell / Barbell",
                 muscleTags = listOf("Anterior Deltoid", "Triceps", "Upper Chest"),
                 stepCount = 6,
-                firstStepBrief = "Pastikan seluruh tubuh terlihat dan tubuh menghadap samping ke kamera"
+                firstStepBrief = "Pastikan seluruh tubuh terlihat dan tubuh menghadap depan ke kamera"
             )
         )
     }

@@ -36,7 +36,7 @@ enum class ExerciseType(
         muscleGroup = "Otot: Bahu, Triceps",
         description = "Latihan mendorong beban ke atas dari posisi bahu hingga lengan lurus sepenuhnya.",
         difficulty = "Menengah",
-        cameraHint = "Posisikan tubuh menghadap samping kiri atau kanan kamera"
+        cameraHint = "Posisikan tubuh menghadap depan ke kamera"
     );
 
     companion object {
