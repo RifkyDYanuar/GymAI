@@ -73,7 +73,7 @@ class RiwayatFragment : Fragment() {
         // Add Tabs
         binding.tabExercises.addTab(binding.tabExercises.newTab().setText("Semua"))
         binding.tabExercises.addTab(binding.tabExercises.newTab().setText("Squat"))
-        binding.tabExercises.addTab(binding.tabExercises.newTab().setText("Bicep Curl"))
+        binding.tabExercises.addTab(binding.tabExercises.newTab().setText("Biceps Curl"))
         binding.tabExercises.addTab(binding.tabExercises.newTab().setText("Lateral Raise"))
         binding.tabExercises.addTab(binding.tabExercises.newTab().setText("Shoulder Press"))
 

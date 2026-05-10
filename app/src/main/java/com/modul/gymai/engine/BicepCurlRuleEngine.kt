@@ -58,7 +58,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
                 isValid = false,
                 feedback = "Pastikan tubuh terlihat jelas di kamera",
                 liveFeedback = "Pastikan tubuh terlihat jelas di kamera",
-                repStatus = currentRepStatus()
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
             )
         }
 
@@ -74,7 +75,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
                 isValid = false,
                 feedback = "Harus menghadap ke samping",
                 liveFeedback = "Harus menghadap ke samping",
-                repStatus = currentRepStatus()
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
             )
         }
 
@@ -84,7 +86,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
                 isValid = false,
                 feedback = "Lengan tidak terdeteksi",
                 liveFeedback = "Lengan tidak terdeteksi",
-                repStatus = currentRepStatus()
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
             )
         }
         lastResolvedArmSide = trackedArm.side
@@ -146,7 +149,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
             val finalFeedback = buildFeedback(
                 error = completedViolation,
                 elbowAngle = elbowAngle,
-                defaultMessage = "Fleksi siku optimal dan tubuh stabil"
+                defaultMessage = "Gerakan benar, siku tetap stabil dan fleksi siku optimal"
             )
             val repStatus = if (completedViolation == null) BicepRepStatus.REP_GOOD else BicepRepStatus.REP_BAD
             val shouldCountRep = completedViolation == null
@@ -166,8 +169,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         val liveFeedback = when {
             tempoViolationDetected -> "Tempo terlalu cepat, perlambat gerakan"
             elbowMovingNow -> "Jaga siku tetap diam di samping tubuh"
-            torsoMovingNow -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
-            cycleActive && elbowAngle < 90f && elbowAngle > ELBOW_PEAK_MAX -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
+            torsoMovingNow -> "Jaga tubuh tetap tegak dan hindari ayunan badan"
+            cycleActive && elbowAngle < 90f && elbowAngle > ELBOW_PEAK_MAX -> "Angkat beban lebih tinggi hingga siku menekuk optimal"
             cycleActive && elbowAngle >= 90f -> "Lakukan gerakan curl dengan kontrol"
             cycleActive -> "Gerakan curl baik, lanjutkan dengan kontrol"
             else -> "Siap untuk repetisi berikutnya"
@@ -324,9 +327,9 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         return when {
             error == BicepFormError.TEMPO_TOO_FAST -> "Tempo terlalu cepat, perlambat gerakan"
             error == BicepFormError.ELBOW_MOVING -> "Jaga siku tetap diam di samping tubuh"
-            error == BicepFormError.TORSO_SWAY -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
-            error == BicepFormError.RANGE_INCOMPLETE -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
-            elbowAngle < 90f && elbowAngle !in ELBOW_PEAK_MIN..ELBOW_PEAK_MAX -> "Angkat beban lebih tinggi dan jaga tubuh tetap tegak"
+            error == BicepFormError.TORSO_SWAY -> "Jaga tubuh tetap tegak dan hindari ayunan badan"
+            error == BicepFormError.RANGE_INCOMPLETE -> "Angkat beban lebih tinggi hingga siku menekuk optimal"
+            elbowAngle < 90f && elbowAngle !in ELBOW_PEAK_MIN..ELBOW_PEAK_MAX -> "Angkat beban lebih tinggi hingga siku menekuk optimal"
             else -> defaultMessage
         }
     }

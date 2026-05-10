@@ -21,29 +21,15 @@ class PoseDetectorHelper(
 ) {
     companion object {
         private const val KEYPOINT_COUNT = 17
-        private const val MIN_CONFIDENCE_TO_SMOOTH = 0.28f
-        private const val STILL_ALPHA = 0.42f
-        private const val DEFAULT_ALPHA = 0.72f
-        private const val FAST_ALPHA = 0.94f
-        private const val ARM_STILL_ALPHA = 0.52f
-        private const val ARM_DEFAULT_ALPHA = 0.76f
-        private const val ARM_FAST_ALPHA = 0.96f
-        private const val STILL_MOVEMENT_THRESHOLD = 0.008f
-        private const val FAST_MOVEMENT_THRESHOLD = 0.03f
-        private const val MICRO_JITTER_THRESHOLD = 0.0018f
-        private const val TRANSIENT_CONFIDENCE_HOLD_FRAMES = 2
     }
 
     private var poseDetector: PoseDetector
-    private var lastSmoothedKeypoints: List<Keypoint>? = null
-    private var lowConfidenceHoldFrames = IntArray(KEYPOINT_COUNT)
     @Volatile private var isProcessingFrame = false
 
     init {
         val options = PoseDetectorOptions.Builder()
             .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
             .build()
-        
         poseDetector = PoseDetection.getClient(options)
     }
 
@@ -111,11 +97,11 @@ class PoseDetectorHelper(
             .addOnSuccessListener { pose ->
                 val landmarks = pose.allPoseLandmarks
                 if (landmarks.isEmpty()) {
-                    lastSmoothedKeypoints = null
-                    lowConfidenceHoldFrames = IntArray(KEYPOINT_COUNT)
-                    onResults(emptyPoseResult())
+                    val emptyKeypoints = List(KEYPOINT_COUNT) { Keypoint(0f, 0f, 0f) }
+                    val emptyResult = PoseResult(keypoints = emptyKeypoints, score = 0f, rawKeypoints = emptyKeypoints)
                     isProcessingFrame = false
                     onFinished()
+                    onResults(emptyResult)
                     return@addOnSuccessListener
                 }
 
@@ -137,18 +123,19 @@ class PoseDetectorHelper(
                 }
 
                 val avgScore = if (filteredKeypoints.isNotEmpty()) totalScore / filteredKeypoints.size else 0f
-                val smoothedKeypoints = smoothKeypoints(filteredKeypoints)
-                onResults(
-                    PoseResult(
-                        keypoints = smoothedKeypoints,
-                        score = avgScore,
-                        rawKeypoints = filteredKeypoints,
-                        sourceWidth = orientedWidth,
-                        sourceHeight = orientedHeight
-                    )
+                // Pipeline: lepas busy flag & tutup imageProxy DULU
+                // agar ML Kit bisa mulai proses frame berikutnya
+                // sementara processResults berjalan paralel
+                val result = PoseResult(
+                    keypoints = filteredKeypoints,
+                    score = avgScore,
+                    rawKeypoints = filteredKeypoints,
+                    sourceWidth = orientedWidth,
+                    sourceHeight = orientedHeight
                 )
                 isProcessingFrame = false
                 onFinished()
+                onResults(result)
             }
             .addOnFailureListener { e ->
                 isProcessingFrame = false
@@ -157,111 +144,9 @@ class PoseDetectorHelper(
             }
     }
 
-    private fun smoothKeypoints(currentKeypoints: List<Keypoint>): List<Keypoint> {
-        val previousKeypoints = lastSmoothedKeypoints
-        if (previousKeypoints == null || previousKeypoints.size != currentKeypoints.size) {
-            lastSmoothedKeypoints = currentKeypoints
-            return currentKeypoints
-        }
-
-        val smoothed = currentKeypoints.mapIndexed { index, current ->
-            val previous = previousKeypoints[index]
-
-            if (current.confidence < MIN_CONFIDENCE_TO_SMOOTH) {
-                if (
-                    previous.confidence >= MIN_CONFIDENCE_TO_SMOOTH &&
-                    lowConfidenceHoldFrames[index] < TRANSIENT_CONFIDENCE_HOLD_FRAMES
-                ) {
-                    lowConfidenceHoldFrames[index] += 1
-                    previous.copy(confidence = maxOf(current.confidence, previous.confidence * 0.9f))
-                } else {
-                    lowConfidenceHoldFrames[index] = 0
-                    current
-                }
-            } else if (previous.confidence < MIN_CONFIDENCE_TO_SMOOTH) {
-                lowConfidenceHoldFrames[index] = 0
-                current
-            } else {
-                lowConfidenceHoldFrames[index] = 0
-                val dx = current.x - previous.x
-                val dy = current.y - previous.y
-                val movement = kotlin.math.sqrt(dx * dx + dy * dy)
-
-                if (movement < MICRO_JITTER_THRESHOLD) {
-                    previous.copy(confidence = current.confidence)
-                } else {
-                    val baseAlpha = when {
-                        index in ARM_KEYPOINTS -> armAdaptiveAlpha(movement)
-                        else -> adaptiveAlpha(movement)
-                    }
-                    val alpha = confidenceAwareAlpha(baseAlpha, current.confidence, previous.confidence)
-                Keypoint(
-                    x = lerp(previous.x, current.x, alpha),
-                    y = lerp(previous.y, current.y, alpha),
-                    confidence = current.confidence
-                )
-                }
-            }
-        }
-
-        lastSmoothedKeypoints = smoothed
-        return smoothed
-    }
-
-    private fun lerp(start: Float, end: Float, alpha: Float): Float {
-        return start + (end - start) * alpha
-    }
-
-    private fun emptyPoseResult(): PoseResult {
-        val emptyKeypoints = List(KEYPOINT_COUNT) { Keypoint(0f, 0f, 0f) }
-        return PoseResult(
-            keypoints = emptyKeypoints,
-            score = 0f,
-            rawKeypoints = emptyKeypoints
-        )
-    }
-
-    private fun adaptiveAlpha(movement: Float): Float {
-        return when {
-            movement < STILL_MOVEMENT_THRESHOLD -> STILL_ALPHA
-            movement > FAST_MOVEMENT_THRESHOLD -> FAST_ALPHA
-            else -> DEFAULT_ALPHA
-        }
-    }
-
-    private fun armAdaptiveAlpha(movement: Float): Float {
-        return when {
-            movement < STILL_MOVEMENT_THRESHOLD -> ARM_STILL_ALPHA
-            movement > FAST_MOVEMENT_THRESHOLD -> ARM_FAST_ALPHA
-            else -> ARM_DEFAULT_ALPHA
-        }
-    }
-
-    private fun confidenceAwareAlpha(baseAlpha: Float, currentConfidence: Float, previousConfidence: Float): Float {
-        val minConfidence = minOf(currentConfidence, previousConfidence)
-        val confidenceScale = when {
-            minConfidence < 0.4f -> 0.68f
-            minConfidence < 0.55f -> 0.8f
-            minConfidence < 0.7f -> 0.9f
-            else -> 1f
-        }
-        return (baseAlpha * confidenceScale).coerceIn(0.18f, 0.98f)
-    }
-
-    private val ARM_KEYPOINTS = setOf(
-        Keypoint.LEFT_SHOULDER,
-        Keypoint.RIGHT_SHOULDER,
-        Keypoint.LEFT_ELBOW,
-        Keypoint.RIGHT_ELBOW,
-        Keypoint.LEFT_WRIST,
-        Keypoint.RIGHT_WRIST
-    )
-
     fun isBusy(): Boolean = isProcessingFrame
 
     fun close() {
-        lastSmoothedKeypoints = null
-        lowConfidenceHoldFrames = IntArray(KEYPOINT_COUNT)
         isProcessingFrame = false
         poseDetector.close()
     }

@@ -41,7 +41,6 @@ class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQ
             PhaseState.UP -> if (angle < SQUAT_DOWN_THRESHOLD) currentState = PhaseState.DOWN
             PhaseState.DOWN -> if (angle > SQUAT_UP_THRESHOLD) {
                 currentState = PhaseState.UP
-                repCount++
             }
         }
     }
@@ -59,7 +58,8 @@ class RepetitionCounter(private val exerciseType: ExerciseType = ExerciseType.SQ
         if (
             shouldCountRep &&
             (
-                exerciseType == ExerciseType.BICEP_CURL ||
+                exerciseType == ExerciseType.SQUAT ||
+                    exerciseType == ExerciseType.BICEP_CURL ||
                     exerciseType == ExerciseType.LATERAL_RAISE ||
                     exerciseType == ExerciseType.SHOULDER_PRESS
                 )

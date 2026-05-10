@@ -18,7 +18,7 @@ enum class ExerciseType(
         cameraHint = "Posisikan tubuh menghadap samping serong ke kiri atau kanan kamera"
     ),
     BICEP_CURL(
-        displayName = "Bicep Curl",
+        displayName = "Biceps Curl",
         muscleGroup = "Otot: Biseps, Lengan Atas",
         description = "Latihan untuk melatih otot bisep. Gerakan menekuk siku dari lurus hingga sudut maksimal.",
         difficulty = "Pemula",
@@ -29,7 +29,7 @@ enum class ExerciseType(
         muscleGroup = "Otot: Bahu (Deltoid Lateral)",
         description = "Latihan mengangkat lengan ke samping hingga sejajar bahu untuk melatih otot deltoid lateral.",
         difficulty = "Pemula",
-        cameraHint = "Posisikan tubuh menghadap depan ke kamera"
+        cameraHint = "Duduk atau berdiri tegak menghadap depan ke kamera"
     ),
     SHOULDER_PRESS(
         displayName = "Shoulder Press",

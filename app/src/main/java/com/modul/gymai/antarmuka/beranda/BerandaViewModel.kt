@@ -12,10 +12,8 @@ import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.engine.ExerciseType
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
 class BerandaViewModel(private val repository: WorkoutRepository) : ViewModel() {
@@ -60,11 +58,11 @@ class BerandaViewModel(private val repository: WorkoutRepository) : ViewModel() 
 
     private val _trainingImprovement = MutableLiveData(
         TrainingImprovementUiModel(
-            title = "Peningkatan Latihan",
-            headline = "Belum cukup data",
-            supporting = "Butuh minimal dua periode latihan untuk membaca progres.",
-            footer = "7 hari terakhir dibanding 7 hari sebelumnya",
-            isPositive = false,
+            title = "Saran Latihan Terbaru",
+            headline = "Belum ada evaluasi terbaru",
+            supporting = "Selesaikan sesi latihan untuk melihat feedback terakhir.",
+            footer = "Feedback terbaru akan tampil di sini",
+            isPositive = true,
             isNeutral = true,
             isEmpty = true
         )
@@ -116,62 +114,37 @@ class BerandaViewModel(private val repository: WorkoutRepository) : ViewModel() 
     private fun buildTrainingImprovement(sessions: List<WorkoutSession>): TrainingImprovementUiModel {
         if (sessions.isEmpty()) {
             return TrainingImprovementUiModel(
-                title = "Peningkatan Latihan",
-                headline = "Belum cukup data",
-                supporting = "Butuh minimal dua periode latihan untuk membaca progres.",
-                footer = "7 hari terakhir dibanding 7 hari sebelumnya",
-                isPositive = false,
+                title = "Saran Latihan Terbaru",
+                headline = "Belum ada evaluasi terbaru",
+                supporting = "Selesaikan sesi latihan untuk melihat feedback terakhir.",
+                footer = "Feedback terbaru akan tampil di sini",
+                isPositive = true,
                 isNeutral = true,
                 isEmpty = true
             )
         }
 
-        val now = System.currentTimeMillis()
-        val sevenDaysMs = 7L * 24L * 60L * 60L * 1000L
-        val currentStart = now - sevenDaysMs
-        val previousStart = now - (sevenDaysMs * 2L)
+        val latestSession = sessions.maxByOrNull { it.timestamp } ?: sessions.last()
+        val latestFeedback = latestSession.mostFrequentFeedback
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val latestSummary = latestSession.feedbackSummary
+            ?.lineSequence()
+            ?.map { it.trim() }
+            ?.firstOrNull { line -> line.isNotEmpty() && !line.startsWith("-") }
+            ?: latestSession.feedbackSummary?.trim().takeIf { !it.isNullOrEmpty() }
 
-        val currentWeekReps = sessions
-            .filter { it.timestamp in currentStart..now }
-            .sumOf { it.totalReps }
-        val previousWeekReps = sessions
-            .filter { it.timestamp in previousStart until currentStart }
-            .sumOf { it.totalReps }
-
-        if (previousWeekReps == 0) {
-            return TrainingImprovementUiModel(
-                title = "Peningkatan Latihan",
-                headline = "Belum cukup data",
-                supporting = "Perlu data dari minggu sebelumnya untuk membaca peningkatan.",
-                footer = "7 hari terakhir dibanding 7 hari sebelumnya",
-                isPositive = false,
-                isNeutral = true,
-                isEmpty = true
-            )
-        }
-
-        val delta = currentWeekReps - previousWeekReps
-        val percentage = ((delta.toFloat() / previousWeekReps.toFloat()) * 100f).roundToInt()
-
-        val status = when {
-            delta.absoluteValue <= 1 -> "Stabil"
-            delta > 0 -> "Meningkat"
-            else -> "Menurun"
-        }
-
-        val deltaPrefix = when {
-            delta > 0 -> "+"
-            delta < 0 -> "-"
-            else -> ""
-        }
+        val headline = latestFeedback ?: "Pertahankan kualitas gerakan"
+        val supporting = latestSummary ?: "Fokus pada tempo stabil dan postur yang konsisten."
+        val footer = "${formatExerciseName(latestSession.exerciseType)} - ${formatShortDate(latestSession.timestamp)}"
 
         return TrainingImprovementUiModel(
-            title = "Peningkatan Latihan",
-            headline = status,
-            supporting = "$deltaPrefix${delta.absoluteValue} repetisi (${deltaPrefix}${percentage.absoluteValue}%)",
-            footer = "7 hari terakhir dibanding 7 hari sebelumnya",
-            isPositive = delta > 1,
-            isNeutral = delta.absoluteValue <= 1,
+            title = "Saran Latihan Terbaru",
+            headline = headline,
+            supporting = supporting,
+            footer = footer,
+            isPositive = true,
+            isNeutral = false,
             isEmpty = false
         )
     }

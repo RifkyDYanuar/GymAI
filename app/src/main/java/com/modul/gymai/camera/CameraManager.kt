@@ -66,12 +66,12 @@ class CameraManager(
                 Size(640, 480),
             ),
             backAnalysisResolutions = listOf(
-                Size(640, 480),
+                Size(320, 240),
                 Size(480, 360),
             ),
             frontAnalysisResolutions = listOf(
+                Size(320, 240),
                 Size(480, 360),
-                Size(640, 480),
             )
         )
 
@@ -85,11 +85,10 @@ class CameraManager(
                 Size(640, 480),
             ),
             backAnalysisResolutions = listOf(
-                Size(480, 360),
-                Size(640, 480),
+                Size(320, 240),
             ),
             frontAnalysisResolutions = listOf(
-                Size(480, 360),
+                Size(320, 240),
             )
         )
 
@@ -102,10 +101,10 @@ class CameraManager(
                 Size(640, 480),
             ),
             backAnalysisResolutions = listOf(
-                Size(480, 360),
+                Size(320, 240),
             ),
             frontAnalysisResolutions = listOf(
-                Size(480, 360),
+                Size(320, 240),
             )
         )
 
@@ -113,10 +112,10 @@ class CameraManager(
             Size(640, 480),
         )
         private val LOW_LOAD_ANALYSIS_RESOLUTIONS = listOf(
-            Size(480, 360),
+            Size(320, 240),
         )
         private val FRONT_CAMERA_RECORDING_ANALYSIS_RESOLUTIONS = listOf(
-            Size(480, 360),
+            Size(320, 240),
         )
     }
 

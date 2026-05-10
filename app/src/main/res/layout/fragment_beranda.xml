@@ -32,20 +32,12 @@
                     android:gravity="center"
                     android:orientation="vertical">
 
-                    <ImageView
-                        android:layout_width="200dp"
-                        android:layout_height="60dp"
-                        android:layout_marginBottom="16dp"
-                        android:adjustViewBounds="true"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/logo" />
-
                     <TextView
                         android:id="@+id/tv_greeting"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/poppins"
-                        android:text="Halo, Selamat Berlatih!"
+                        android:text=""
                         android:textColor="#1A1A2E"
                         android:textSize="20sp"
                         android:textStyle="bold" />
@@ -130,6 +122,7 @@
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:id="@+id/card_stats"
                     android:layout_marginTop="20dp"
                     app:cardBackgroundColor="#C1121F"
                     app:cardCornerRadius="20dp"
@@ -184,6 +177,7 @@
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/nested_scroll_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
@@ -289,7 +283,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/poppins"
-                            android:text="Peningkatan Latihan"
+                            android:text="Saran Latihan Terbaru"
                             android:textColor="#C1121F"
                             android:textSize="12sp"
                             android:textStyle="bold" />
@@ -301,7 +295,7 @@
                             android:layout_marginTop="12dp"
                             android:fontFamily="@font/poppins"
                             android:maxLines="2"
-                            android:text="Belum cukup data"
+                            android:text="Belum ada evaluasi terbaru"
                             android:textColor="#C1121F"
                             android:textSize="18sp"
                             android:textStyle="bold"
@@ -314,10 +308,10 @@
                             android:layout_marginTop="8dp"
                             android:fontFamily="@font/poppins"
                             android:maxLines="2"
-                            android:text="Butuh minimal dua periode latihan untuk membaca progres."
+                            android:text="Selesaikan sesi latihan untuk melihat feedback terakhir."
                             android:textColor="#B45309"
                             android:textSize="12sp"
-                            tools:text="+14 repetisi (+28%)" />
+                            tools:text="Tempo terlalu cepat, perlambat gerakan" />
 
                         <TextView
                             android:id="@+id/tv_improvement_footer"
@@ -325,7 +319,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="12dp"
                             android:fontFamily="@font/poppins"
-                            android:text="7 hari terakhir dibanding 7 hari sebelumnya"
+                            android:text="Feedback terbaru akan tampil di sini"
                             android:textColor="#7F1D1D"
                             android:textSize="11sp" />
 
@@ -338,6 +332,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:id="@+id/section_jelajahi"
                 android:layout_marginTop="20dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
@@ -382,6 +377,8 @@
                 android:layout_marginHorizontal="20dp"
                 android:layout_marginTop="8dp"
                 android:fontFamily="@font/poppins"
+                android:id="@+id/tv_aktivitas_terakhir_header"
+
                 android:text="Aktivitas Terakhir"
                 android:textColor="#1A1A2E"
                 android:textSize="16sp"

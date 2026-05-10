@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
@@ -57,8 +58,18 @@ class DashboardFragment : Fragment() {
         binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
-                // Direct mapping 1:1 since ViewPager now has 5 items matching Menu
-                binding.bottomNav.menu.getItem(position).isChecked = true
+                val menuId = pageToMenuId(position)
+                if (menuId == null) {
+                    // Halaman Latihan (placeholder FAB) — tidak ada item yang aktif
+                    // setGroupCheckable(false) agar bisa uncheck semua, lalu restore
+                    binding.bottomNav.menu.setGroupCheckable(0, false, false)
+                    for (i in 0 until binding.bottomNav.menu.size()) {
+                        binding.bottomNav.menu.getItem(i).isChecked = false
+                    }
+                    binding.bottomNav.menu.setGroupCheckable(0, true, false)
+                } else {
+                    binding.bottomNav.menu.findItem(menuId)?.isChecked = true
+                }
             }
         })
 
@@ -67,19 +78,39 @@ class DashboardFragment : Fragment() {
             when (item.itemId) {
                 R.id.berandaFragment -> openDashboardPage(0, true)
                 R.id.panduanFragment -> openDashboardPage(1, true)
-                R.id.placeholder -> openDashboardPage(2, true)
+                R.id.placeholder    -> openDashboardPage(2, true)
                 R.id.riwayatFragment -> openDashboardPage(3, true)
-                R.id.infoFragment -> openDashboardPage(4, true)
+                R.id.infoFragment   -> openDashboardPage(4, true)
             }
             true
         }
 
-        // FAB Click Listener - Open Latihan Selection (Page 2)
+        // FAB Click — navigate ke LatihanFragment via NavController
+        // Muncul dari bawah + navbar otomatis hilang (full-screen experience)
         binding.fabEvaluasi.setOnClickListener {
-            openDashboardPage(2, true)
+            findNavController().navigate(
+                R.id.action_dashboard_to_latihan,
+                null,
+                NavOptions.Builder()
+                    .setEnterAnim(R.anim.slide_in_bottom)
+                    .setExitAnim(R.anim.scale_fade_out)
+                    .setPopEnterAnim(R.anim.scale_fade_in)
+                    .setPopExitAnim(R.anim.slide_out_bottom)
+                    .build()
+            )
         }
 
         observeHistoryOpenRequest()
+    }
+
+    /** Mapping posisi ViewPager → ID menu item (null jika tidak ada item menu untuk posisi itu) */
+    private fun pageToMenuId(position: Int): Int? = when (position) {
+        0 -> R.id.berandaFragment
+        1 -> R.id.panduanFragment
+        2 -> null                    // placeholder (FAB page, tidak ada item menu)
+        3 -> R.id.riwayatFragment
+        4 -> R.id.infoFragment
+        else -> null
     }
 
     private fun observeHistoryOpenRequest() {
@@ -100,7 +131,10 @@ class DashboardFragment : Fragment() {
 
     private fun openDashboardPage(index: Int, smoothScroll: Boolean) {
         val safeBinding = _binding ?: return
-        safeBinding.bottomNav.menu.getItem(index).isChecked = true
+        // Tandai menu item yang sesuai (skip jika placeholder/null)
+        pageToMenuId(index)?.let { menuId ->
+            safeBinding.bottomNav.menu.findItem(menuId)?.isChecked = true
+        }
         safeBinding.viewPager.post {
             val currentBinding = _binding ?: return@post
             if (currentBinding.viewPager.currentItem != index) {

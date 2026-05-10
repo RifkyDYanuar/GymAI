@@ -11,31 +11,33 @@ class LateralRaiseRuleEngine(
 ) : ExerciseRuleEngine {
 
     companion object {
-        private const val MIN_CONF = 0.45f
-        private const val FRONT_VIEW_SHOULDER_DISTANCE_MIN = 0.14f
-        private const val READY_FRAMES = 4
-        private const val READY_LIFT_MAX = 24f
+        private const val MIN_CONF = 0.35f
+        private const val HIP_MIN_CONF = 0.28f
+        private const val FRONT_VIEW_SHOULDER_DISTANCE_MIN = 0.10f
+        private const val READY_FRAMES = 3
+        private const val READY_LIFT_MAX = 28f
         private const val START_LIFT_MIN = 28f
-        private const val PEAK_LIFT_MIN = 70f
+        private const val PEAK_LIFT_MIN = 64f
         private const val PEAK_LIFT_MAX = 100f
-        private const val OVER_RAISE_MAX = 110f
-        private const val RETURN_LIFT_MAX = 24f
-        private const val ELBOW_BEND_MIN = 80f
-        private const val ELBOW_BEND_MAX = 165f
+        private const val OVER_RAISE_MAX = 118f
+        private const val RETURN_LIFT_MAX = 34f
         private const val SHOULDER_SHRUG_THRESHOLD = 0.028f
         private const val HIP_CENTER_DRIFT_THRESHOLD = 0.075f
         private const val TORSO_ANGLE_DRIFT_THRESHOLD = 10f
         private const val SYMMETRY_LIFT_THRESHOLD = 16f
         private const val WRIST_HEIGHT_SYMMETRY_THRESHOLD = 0.065f
         private const val ELBOW_LEAD_TOLERANCE = -0.012f
-        private const val PEAK_OVER_SHOULDER_TOLERANCE = 0.02f
+        private const val PEAK_OVER_SHOULDER_TOLERANCE = 0.06f
+        private const val FOREARM_UPWARD_TOLERANCE = 0.03f
         private const val SCAPTION_WRIST_OUTER_RATIO = 0.75f
         private const val SCAPTION_ELBOW_OUTER_RATIO = 0.58f
-        private const val ACTIVE_LIFT_MIN = 38f
+        private const val ACTIVE_LIFT_MIN = 42f
+        private const val RETURN_LIFT_FALLBACK_MAX = ACTIVE_LIFT_MIN
         private const val MIN_UP_PHASE_MS = 350L
         private const val MIN_FULL_REP_MS = 800L
         private const val VIOLATION_THRESHOLD_MS = 220L
         private const val VIOLATION_RATIO_THRESHOLD = 0.24f
+        private const val ACTIVE_MISSING_ARM_TOLERANCE_FRAMES = 5
     }
 
     private var cycleActive = false
@@ -45,18 +47,22 @@ class LateralRaiseRuleEngine(
     private var readyFrames = 0
     private var peakReached = false
     private var tempoViolationDetected = false
-    private var overRaiseDetected = false
+    private var overRaiseViolationDetected = false
     private var anchorShoulderY = 0f
     private var anchorHipCenterX = 0f
     private var anchorHipCenterY = 0f
     private var anchorTorsoAngle = 0f
-
-    private var elbowBendViolationMs = 0L
     private var elbowLeadingViolationMs = 0L
     private var shrugViolationMs = 0L
     private var torsoViolationMs = 0L
     private var pathViolationMs = 0L
     private var symmetryViolationMs = 0L
+    private var overRaiseViolationMs = 0L
+
+    // Sudut angkat tertinggi yang dicapai dalam siklus saat ini
+    private var cycleMaxLiftAngle = 0f
+    private var requireFreshBottomBeforeNextCycle = false
+    private var activeMissingArmFrames = 0
 
     override fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
@@ -65,19 +71,36 @@ class LateralRaiseRuleEngine(
                 isValid = false,
                 feedback = "Pastikan tubuh terlihat jelas di kamera",
                 liveFeedback = "Pastikan tubuh terlihat jelas di kamera",
-                repStatus = currentRepStatus()
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
             )
         }
 
         val metrics = extractMetrics(pose.rawKeypoints) ?: run {
+            if (cycleActive) {
+                activeMissingArmFrames++
+                if (activeMissingArmFrames <= ACTIVE_MISSING_ARM_TOLERANCE_FRAMES) {
+                    return RuleResult(
+                        isValid = true,
+                        feedback = "Lanjutkan lateral raise dengan kontrol",
+                        liveFeedback = "Lanjutkan lateral raise dengan kontrol",
+                        repStatus = BicepRepStatus.IN_PROGRESS,
+                        repCompleted = false,
+                        shouldCountRep = false,
+                        isPositionIssue = false
+                    )
+                }
+            }
             cancelCycle()
             return RuleResult(
                 isValid = false,
                 feedback = "Pastikan kedua lengan terlihat jelas",
                 liveFeedback = "Pastikan kedua lengan terlihat jelas",
-                repStatus = currentRepStatus()
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
             )
         }
+        activeMissingArmFrames = 0
 
         if (metrics.shoulderDistance < FRONT_VIEW_SHOULDER_DISTANCE_MIN) {
             cancelCycle()
@@ -85,7 +108,8 @@ class LateralRaiseRuleEngine(
                 isValid = false,
                 feedback = "Hadapkan tubuh ke depan kamera",
                 liveFeedback = "Hadapkan tubuh ke depan kamera",
-                repStatus = currentRepStatus()
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
             )
         }
 
@@ -96,28 +120,33 @@ class LateralRaiseRuleEngine(
             updateReadyState(metrics)
         }
 
-        val elbowBentNow = isBentEnough(metrics)
+        val elbowBentAtReady = isBentEnough(metrics)
         val elbowLeadingNow = metrics.avgLiftAngle < ACTIVE_LIFT_MIN || isElbowLeading(metrics)
         val pathControlledNow = metrics.avgLiftAngle < ACTIVE_LIFT_MIN || isScaptionPathValid(metrics)
         val shouldersRelaxedNow = !areShouldersShrugging(metrics)
         val torsoStableNow = isTorsoStable(metrics)
         val symmetricNow = isSymmetric(metrics)
+        val isOverRaisedNow = cycleActive && isRaisedTooHigh(metrics)
 
         if (cycleActive) {
             val dtMs = (now - cycleLastSampleTimeMs).coerceAtLeast(0L)
             cycleLastSampleTimeMs = now
+            cycleMaxLiftAngle = maxOf(cycleMaxLiftAngle, metrics.avgLiftAngle)
             accumulateViolations(
                 dtMs = dtMs,
-                elbowBentNow = elbowBentNow,
                 elbowLeadingNow = elbowLeadingNow,
                 shouldersRelaxedNow = shouldersRelaxedNow,
                 torsoStableNow = torsoStableNow,
                 pathControlledNow = pathControlledNow,
-                symmetricNow = symmetricNow
+                symmetricNow = symmetricNow,
+                overRaisedNow = isOverRaisedNow
             )
 
             if (metrics.avgLiftAngle >= PEAK_LIFT_MIN) {
                 peakReached = true
+            }
+            if (isOverRaisedNow) {
+                overRaiseViolationDetected = true
             }
             if (cyclePeakTimeMs == 0L && metrics.avgLiftAngle >= PEAK_LIFT_MIN) {
                 cyclePeakTimeMs = now
@@ -125,34 +154,51 @@ class LateralRaiseRuleEngine(
                     tempoViolationDetected = true
                 }
             }
-            if (isRaisedTooHigh(metrics)) {
-                overRaiseDetected = true
-            }
         }
 
+        // Lengan turun sebelum mencapai peak → batalkan siklus secara diam-diam (IDLE).
+        // Evaluasi BENAR/SALAH hanya boleh muncul setelah repetisi penuh (peak tercapai + kembali ke bawah).
+        // Konsisten dengan squat, bicep curl, dan shoulder press.
         if (cycleActive && !peakReached && metrics.avgLiftAngle <= READY_LIFT_MAX) {
-            val resetFeedback = if (elbowBentNow) {
-                "Siap untuk repetisi berikutnya"
-            } else {
-                "Jaga siku tetap sedikit menekuk"
+            if (cycleMaxLiftAngle >= START_LIFT_MIN) {
+                val finalFeedback = buildFeedback(
+                    error = LateralRaiseFormError.RANGE_TOO_LOW,
+                    defaultMessage = "Gerakan benar, tangan sejajar bahu dan tempo terkontrol"
+                )
+                resetCycleState(keepBottomReady = elbowBentAtReady)
+                return RuleResult(
+                    isValid = false,
+                    feedback = finalFeedback,
+                    primaryMetric = metrics.avgLiftAngle,
+                    secondaryMetric = metrics.avgElbowAngle,
+                    torsoAngle = metrics.torsoAngle,
+                    liveFeedback = finalFeedback,
+                    repStatus = BicepRepStatus.REP_BAD,
+                    repCompleted = true,
+                    shouldCountRep = false
+                )
             }
-            cancelCycle()
+
+            resetCycleState(keepBottomReady = elbowBentAtReady)
             return RuleResult(
-                isValid = elbowBentNow,
-                feedback = resetFeedback,
+                isValid = elbowBentAtReady,
+                feedback = if (elbowBentAtReady) "Siap untuk repetisi berikutnya"
+                           else "Jaga siku tetap sedikit menekuk",
                 primaryMetric = metrics.avgLiftAngle,
                 secondaryMetric = metrics.avgElbowAngle,
                 torsoAngle = metrics.torsoAngle,
-                liveFeedback = resetFeedback,
-                repStatus = currentRepStatus()
+                liveFeedback = if (elbowBentAtReady) "Siap untuk repetisi berikutnya"
+                               else "Jaga siku tetap sedikit menekuk",
+                repStatus = BicepRepStatus.IDLE
             )
         }
 
-        if (cycleActive && peakReached && metrics.avgLiftAngle <= RETURN_LIFT_MAX) {
-            val completedViolation = finishCycle(now)
+        if (cycleActive && peakReached && hasReturnedToBottom(metrics)) {
+            val keepBottomReady = metrics.avgLiftAngle <= READY_LIFT_MAX && elbowBentAtReady
+            val completedViolation = finishCycle(now, keepBottomReady)
             val finalFeedback = buildFeedback(
                 error = completedViolation,
-                defaultMessage = "Lengan terangkat setinggi bahu dan tubuh stabil"
+                defaultMessage = "Gerakan benar, tangan sejajar bahu dan tempo terkontrol"
             )
             val repStatus = if (completedViolation == null) BicepRepStatus.REP_GOOD else BicepRepStatus.REP_BAD
             val shouldCountRep = completedViolation == null
@@ -169,27 +215,18 @@ class LateralRaiseRuleEngine(
             )
         }
 
-        val isOverRaisedNow = cycleActive && isRaisedTooHigh(metrics)
-
         val liveFeedback = when {
-            tempoViolationDetected -> "Tempo terlalu cepat, perlambat gerakan"
-            !elbowBentNow -> "Jaga siku tetap sedikit menekuk"
-            !shouldersRelaxedNow -> "Jangan angkat bahu saat mengangkat beban"
-            !torsoStableNow -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
-            !pathControlledNow -> "Angkat beban ke samping serong, jangan terlalu ke pinggir"
-            !elbowLeadingNow -> "Pimpin gerakan dengan siku, jangan pergelangan tangan"
-            !symmetricNow -> "Jaga kedua lengan tetap seimbang"
-            isOverRaisedNow -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
-            cycleActive && metrics.avgLiftAngle < PEAK_LIFT_MIN -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
-            cycleActive -> "Angkat beban dengan kontrol"
+            !cycleActive && !elbowBentAtReady -> "Jaga siku tetap sedikit menekuk"
+            cycleActive && !peakReached -> "Angkat lengan sampai sejajar bahu dengan kontrol"
+            cycleActive && isOverRaisedNow -> "Turunkan lengan perlahan dengan kontrol"
+            cycleActive -> "Turunkan lengan perlahan setelah sejajar bahu"
             else -> "Siap untuk repetisi berikutnya"
         }
 
         val liveFormValid = when {
-            !cycleActive -> elbowBentNow
-            metrics.avgLiftAngle < ACTIVE_LIFT_MIN -> elbowBentNow
-            else -> elbowBentNow &&
-                shouldersRelaxedNow &&
+            !cycleActive -> elbowBentAtReady
+            metrics.avgLiftAngle < ACTIVE_LIFT_MIN -> true
+            else -> shouldersRelaxedNow &&
                 torsoStableNow &&
                 pathControlledNow &&
                 elbowLeadingNow &&
@@ -203,7 +240,8 @@ class LateralRaiseRuleEngine(
             secondaryMetric = metrics.avgElbowAngle,
             torsoAngle = metrics.torsoAngle,
             liveFeedback = liveFeedback,
-            repStatus = currentRepStatus()
+            repStatus = currentRepStatus(),
+            isPositionIssue = !cycleActive && !elbowBentAtReady
         )
     }
 
@@ -212,24 +250,31 @@ class LateralRaiseRuleEngine(
     }
 
     override fun reset() {
+        resetCycleState()
+    }
+
+    private fun resetCycleState(keepBottomReady: Boolean = false) {
         cycleActive = false
         cycleStartTimeMs = 0L
         cyclePeakTimeMs = 0L
         cycleLastSampleTimeMs = 0L
-        readyFrames = 0
+        readyFrames = if (keepBottomReady) READY_FRAMES else 0
         peakReached = false
         tempoViolationDetected = false
-        overRaiseDetected = false
+        overRaiseViolationDetected = false
         anchorShoulderY = 0f
         anchorHipCenterX = 0f
         anchorHipCenterY = 0f
         anchorTorsoAngle = 0f
-        elbowBendViolationMs = 0L
         elbowLeadingViolationMs = 0L
         shrugViolationMs = 0L
         torsoViolationMs = 0L
         pathViolationMs = 0L
         symmetryViolationMs = 0L
+        overRaiseViolationMs = 0L
+        cycleMaxLiftAngle = 0f
+        requireFreshBottomBeforeNextCycle = false
+        activeMissingArmFrames = 0
     }
 
     private fun extractMetrics(keypoints: List<Keypoint>): RepMetrics? {
@@ -246,7 +291,7 @@ class LateralRaiseRuleEngine(
 
         val leftHip = keypoints[Keypoint.LEFT_HIP]
         val rightHip = keypoints[Keypoint.RIGHT_HIP]
-        if (leftHip.confidence <= MIN_CONF || rightHip.confidence <= MIN_CONF) {
+        if (leftHip.confidence <= HIP_MIN_CONF || rightHip.confidence <= HIP_MIN_CONF) {
             return null
         }
 
@@ -301,13 +346,21 @@ class LateralRaiseRuleEngine(
 
         if (metrics.avgLiftAngle <= READY_LIFT_MAX && isBentEnough(metrics)) {
             readyFrames = (readyFrames + 1).coerceAtMost(READY_FRAMES + 2)
-        } else {
-            readyFrames = 0
+            requireFreshBottomBeforeNextCycle = false
+        } else if (metrics.avgLiftAngle <= READY_LIFT_MAX) {
+            readyFrames = (readyFrames - 1).coerceAtLeast(0)
         }
     }
 
     private fun canStartCycle(metrics: RepMetrics): Boolean {
-        return readyFrames >= READY_FRAMES && metrics.avgLiftAngle >= START_LIFT_MIN
+        // Selalu butuh readyFrames — mencegah siklus terpicu oleh gerakan
+        // tidak sengaja (mis. ayunan ringan saat berdiri diam).
+        val hasReadyLatch = readyFrames >= READY_FRAMES ||
+            (readyFrames > 0 && metrics.avgLiftAngle >= ACTIVE_LIFT_MIN)
+        val clearBentLift = !requireFreshBottomBeforeNextCycle &&
+            metrics.avgLiftAngle >= START_LIFT_MIN &&
+            isBentEnough(metrics)
+        return (hasReadyLatch || clearBentLift) && metrics.avgLiftAngle >= START_LIFT_MIN
     }
 
     private fun startCycle(now: Long, metrics: RepMetrics) {
@@ -317,81 +370,65 @@ class LateralRaiseRuleEngine(
         cycleLastSampleTimeMs = now
         peakReached = false
         tempoViolationDetected = false
-        overRaiseDetected = false
+        overRaiseViolationDetected = false
         anchorShoulderY = metrics.avgShoulderY
         anchorHipCenterX = metrics.hipCenterX
         anchorHipCenterY = metrics.hipCenterY
         anchorTorsoAngle = metrics.torsoAngle
-        elbowBendViolationMs = 0L
         elbowLeadingViolationMs = 0L
         shrugViolationMs = 0L
         torsoViolationMs = 0L
         pathViolationMs = 0L
         symmetryViolationMs = 0L
+        overRaiseViolationMs = 0L
+        cycleMaxLiftAngle = metrics.avgLiftAngle
         readyFrames = 0
     }
 
     private fun accumulateViolations(
         dtMs: Long,
-        elbowBentNow: Boolean,
         elbowLeadingNow: Boolean,
         shouldersRelaxedNow: Boolean,
         torsoStableNow: Boolean,
         pathControlledNow: Boolean,
-        symmetricNow: Boolean
+        symmetricNow: Boolean,
+        overRaisedNow: Boolean
     ) {
         if (dtMs <= 0L) return
 
-        if (!elbowBentNow) elbowBendViolationMs += dtMs
         if (!elbowLeadingNow) elbowLeadingViolationMs += dtMs
         if (!shouldersRelaxedNow) shrugViolationMs += dtMs
         if (!torsoStableNow) torsoViolationMs += dtMs
         if (!pathControlledNow) pathViolationMs += dtMs
         if (!symmetricNow) symmetryViolationMs += dtMs
+        if (overRaisedNow) overRaiseViolationMs += dtMs
     }
 
-    private fun finishCycle(now: Long): LateralRaiseFormError? {
+    private fun finishCycle(now: Long, keepBottomReady: Boolean): LateralRaiseFormError? {
         val fullRepDuration = now - cycleStartTimeMs
         if (cyclePeakTimeMs > 0L && fullRepDuration < MIN_FULL_REP_MS) {
             tempoViolationDetected = true
         }
 
         val error = determineCompletedViolation(fullRepDuration)
-        reset()
+        resetCycleState(keepBottomReady = keepBottomReady)
+        requireFreshBottomBeforeNextCycle = !keepBottomReady
         return error
     }
 
     private fun cancelCycle() {
-        reset()
+        resetCycleState()
     }
 
     private fun determineCompletedViolation(fullRepDurationMs: Long): LateralRaiseFormError? {
-        if (tempoViolationDetected) {
-            return LateralRaiseFormError.TEMPO_TOO_FAST
-        }
         if (!peakReached) {
             return LateralRaiseFormError.RANGE_TOO_LOW
         }
-        if (overRaiseDetected) {
+        if (overRaiseViolationDetected || hasSignificantViolation(overRaiseViolationMs, fullRepDurationMs)) {
             return LateralRaiseFormError.RANGE_TOO_HIGH
         }
-        if (hasSignificantViolation(elbowBendViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.ELBOW_TOO_STRAIGHT
-        }
-        if (hasSignificantViolation(pathViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.PATH_TOO_WIDE
-        }
-        if (hasSignificantViolation(elbowLeadingViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.WRIST_LEADING
-        }
-        if (hasSignificantViolation(shrugViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.SHOULDER_SHRUG
-        }
-        if (hasSignificantViolation(torsoViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.TORSO_SWAY
-        }
-        if (hasSignificantViolation(symmetryViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.ASYMMETRIC
+        if (tempoViolationDetected) {
+            return LateralRaiseFormError.TEMPO_TOO_FAST
         }
         return null
     }
@@ -403,8 +440,8 @@ class LateralRaiseRuleEngine(
     }
 
     private fun isBentEnough(metrics: RepMetrics): Boolean {
-        return metrics.left.elbowAngle in ELBOW_BEND_MIN..ELBOW_BEND_MAX &&
-            metrics.right.elbowAngle in ELBOW_BEND_MIN..ELBOW_BEND_MAX
+        return metrics.left.elbowAngle <= 165f &&
+            metrics.right.elbowAngle <= 165f
     }
 
     private fun isElbowLeading(metrics: RepMetrics): Boolean {
@@ -414,9 +451,28 @@ class LateralRaiseRuleEngine(
     }
 
     private fun isRaisedTooHigh(metrics: RepMetrics): Boolean {
+        val anyWristClearlyAbove = metrics.leftWristAboveShoulder || metrics.rightWristAboveShoulder
+        val anyElbowClearlyAbove = metrics.leftElbowAboveShoulder || metrics.rightElbowAboveShoulder
+        val forearmRaisedUpward =
+            metrics.avgLiftAngle >= PEAK_LIFT_MIN &&
+                (isWristClearlyAboveElbow(metrics.left) || isWristClearlyAboveElbow(metrics.right))
         return metrics.avgLiftAngle > OVER_RAISE_MAX ||
-            metrics.leftWristAboveShoulder || metrics.rightWristAboveShoulder ||
-            metrics.leftElbowAboveShoulder || metrics.rightElbowAboveShoulder
+            metrics.avgLiftAngle > PEAK_LIFT_MAX ||
+            anyWristClearlyAbove ||
+            anyElbowClearlyAbove ||
+            forearmRaisedUpward
+    }
+
+    private fun hasReturnedToBottom(metrics: RepMetrics): Boolean {
+        return metrics.avgLiftAngle <= RETURN_LIFT_MAX ||
+            (
+                metrics.avgLiftAngle <= RETURN_LIFT_FALLBACK_MAX &&
+                    cycleMaxLiftAngle >= PEAK_LIFT_MIN
+                )
+    }
+
+    private fun isWristClearlyAboveElbow(arm: ArmMetrics): Boolean {
+        return arm.wrist.y < arm.elbow.y - FOREARM_UPWARD_TOLERANCE
     }
 
     private fun isScaptionPathValid(metrics: RepMetrics): Boolean {
@@ -458,13 +514,12 @@ class LateralRaiseRuleEngine(
 
     private fun buildFeedback(error: LateralRaiseFormError?, defaultMessage: String): String {
         return when (error) {
-            LateralRaiseFormError.ELBOW_TOO_STRAIGHT -> "Jaga siku tetap sedikit menekuk"
-            LateralRaiseFormError.RANGE_TOO_LOW -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
-            LateralRaiseFormError.RANGE_TOO_HIGH -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
+            LateralRaiseFormError.RANGE_TOO_LOW -> "Angkat lengan sampai sejajar bahu"
+            LateralRaiseFormError.RANGE_TOO_HIGH -> "Jangan angkat tangan lebih tinggi dari bahu"
             LateralRaiseFormError.WRIST_LEADING -> "Pimpin gerakan dengan siku, jangan pergelangan tangan"
             LateralRaiseFormError.SHOULDER_SHRUG -> "Jangan angkat bahu saat mengangkat beban"
             LateralRaiseFormError.TEMPO_TOO_FAST -> "Tempo terlalu cepat, perlambat gerakan"
-            LateralRaiseFormError.TORSO_SWAY -> "Angkat lengan setinggi bahu dan hindari tubuh condong"
+            LateralRaiseFormError.TORSO_SWAY -> "Jaga tubuh tetap tegak, jangan condong saat mengangkat"
             LateralRaiseFormError.PATH_TOO_WIDE -> "Angkat beban ke samping serong, jangan terlalu ke pinggir"
             LateralRaiseFormError.ASYMMETRIC -> "Jaga kedua lengan tetap seimbang"
             null -> defaultMessage
@@ -502,7 +557,6 @@ class LateralRaiseRuleEngine(
     )
 
     private enum class LateralRaiseFormError {
-        ELBOW_TOO_STRAIGHT,
         RANGE_TOO_LOW,
         RANGE_TOO_HIGH,
         WRIST_LEADING,

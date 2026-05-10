@@ -41,5 +41,11 @@ data class RuleResult(
     val liveFeedback: String = feedback,
     val repStatus: BicepRepStatus = BicepRepStatus.IDLE,
     val repCompleted: Boolean = false,
-    val shouldCountRep: Boolean = false
+    val shouldCountRep: Boolean = false,
+    /**
+     * true jika masalahnya adalah posisi/orientasi tubuh terhadap kamera
+     * (bukan kesalahan form gerakan). UI akan tampilkan label "POSISI" oranye
+     * daripada "SALAH" merah, dan frame ini tidak dihitung sebagai error gerakan.
+     */
+    val isPositionIssue: Boolean = false
 )

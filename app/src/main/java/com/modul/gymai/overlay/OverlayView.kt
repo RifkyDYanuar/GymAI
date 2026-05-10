@@ -19,25 +19,27 @@ class OverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     companion object {
-        private const val POINT_RADIUS = 6.5f
-        private const val LINE_WIDTH = 5f
-        private const val BONE_ALPHA = 168
-        private const val KEYPOINT_ALPHA = 152
-        private const val LOW_CONFIDENCE_ALPHA = 96
-        private const val INNER_POINT_ALPHA = 170
+        private const val POINT_RADIUS = 7.8f
+        private const val LINE_WIDTH = 6.2f
+        private const val BONE_ALPHA = 186
+        private const val KEYPOINT_ALPHA = 174
+        private const val LOW_CONFIDENCE_ALPHA = 112
+        private const val INNER_POINT_ALPHA = 190
         private const val INNER_POINT_SCALE = 0.34f
-        private const val MIN_CONFIDENCE_TO_STABILIZE = 0.3f
-        private const val MICRO_JITTER_THRESHOLD = 0.0042f
-        private const val SMALL_MOVEMENT_THRESHOLD = 0.019f
-        private const val SNAP_MOVEMENT_THRESHOLD = 0.058f
-        private const val SMALL_MOVEMENT_ALPHA = 0.26f
+        private const val MIN_CONFIDENCE_TO_STABILIZE = 0.36f
+        private const val MIN_CONFIDENCE_TO_DRAW = 0.45f
+        private const val HIGH_CONFIDENCE_THRESHOLD = 0.68f
+        private const val MICRO_JITTER_THRESHOLD = 0.0062f
+        private const val SMALL_MOVEMENT_THRESHOLD = 0.024f
+        private const val SNAP_MOVEMENT_THRESHOLD = 0.068f
+        private const val SMALL_MOVEMENT_ALPHA = 0.30f
         private const val DEFAULT_MOVEMENT_ALPHA = 0.56f
-        private const val ARM_MICRO_JITTER_THRESHOLD = 0.0054f
-        private const val ARM_SMALL_MOVEMENT_THRESHOLD = 0.024f
-        private const val ARM_SNAP_MOVEMENT_THRESHOLD = 0.072f
-        private const val ARM_SMALL_MOVEMENT_ALPHA = 0.14f
-        private const val ARM_DEFAULT_MOVEMENT_ALPHA = 0.38f
-        private const val TRANSIENT_CONFIDENCE_HOLD_FRAMES = 3
+        private const val ARM_MICRO_JITTER_THRESHOLD = 0.0072f
+        private const val ARM_SMALL_MOVEMENT_THRESHOLD = 0.030f
+        private const val ARM_SNAP_MOVEMENT_THRESHOLD = 0.082f
+        private const val ARM_SMALL_MOVEMENT_ALPHA = 0.24f
+        private const val ARM_DEFAULT_MOVEMENT_ALPHA = 0.44f
+        private const val TRANSIENT_CONFIDENCE_HOLD_FRAMES = 4
         private const val POSE_KEYPOINT_COUNT = 17
     }
 
@@ -107,7 +109,7 @@ class OverlayView @JvmOverloads constructor(
             val end = pose.keypoints.getOrNull(endIdx) ?: continue
 
             // Threshold ditingkatkan untuk mencegah "ghosting" pada background
-            if (start.confidence < 0.4f || end.confidence < 0.4f) continue
+            if (start.confidence < MIN_CONFIDENCE_TO_DRAW || end.confidence < MIN_CONFIDENCE_TO_DRAW) continue
 
             val sx = mapX(start.x, drawBounds)
             val sy = mapY(start.y, drawBounds)
@@ -120,10 +122,10 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw keypoints
         for (kp in pose.keypoints) {
-            if (kp.confidence < 0.4f) continue
+            if (kp.confidence < MIN_CONFIDENCE_TO_DRAW) continue
 
-            keypointPaint.color = if (kp.confidence > 0.65f) colorPoint else colorLowConf
-            keypointPaint.alpha = if (kp.confidence > 0.65f) KEYPOINT_ALPHA else LOW_CONFIDENCE_ALPHA
+            keypointPaint.color = if (kp.confidence > HIGH_CONFIDENCE_THRESHOLD) colorPoint else colorLowConf
+            keypointPaint.alpha = if (kp.confidence > HIGH_CONFIDENCE_THRESHOLD) KEYPOINT_ALPHA else LOW_CONFIDENCE_ALPHA
 
             val cx = mapX(kp.x, drawBounds)
             val cy = mapY(kp.y, drawBounds)
@@ -145,13 +147,13 @@ class OverlayView @JvmOverloads constructor(
         val viewAspect = viewWidth / viewHeight
 
         return if (sourceAspect > viewAspect) {
-            val contentHeight = viewWidth / sourceAspect
-            val verticalOffset = (viewHeight - contentHeight) / 2f
-            RectF(0f, verticalOffset, viewWidth, verticalOffset + contentHeight)
-        } else {
             val contentWidth = viewHeight * sourceAspect
             val horizontalOffset = (viewWidth - contentWidth) / 2f
             RectF(horizontalOffset, 0f, horizontalOffset + contentWidth, viewHeight)
+        } else {
+            val contentHeight = viewWidth / sourceAspect
+            val verticalOffset = (viewHeight - contentHeight) / 2f
+            RectF(0f, verticalOffset, viewWidth, verticalOffset + contentHeight)
         }
     }
 

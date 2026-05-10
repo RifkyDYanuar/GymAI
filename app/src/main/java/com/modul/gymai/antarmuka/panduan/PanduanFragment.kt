@@ -1,19 +1,28 @@
 package com.modul.gymai.antarmuka.panduan
 
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.modul.gymai.R
 import com.modul.gymai.antarmuka.latihan.Exercise
 import com.modul.gymai.antarmuka.latihan.ExerciseDetailRepository
 import com.modul.gymai.antarmuka.latihan.ExerciseRepository
+import com.modul.gymai.antarmuka.latihan.TutorialMediaType
 import com.modul.gymai.databinding.FragmentPanduanBinding
 import com.modul.gymai.ui.MaterialSymbols
 
@@ -21,6 +30,8 @@ class PanduanFragment : Fragment() {
 
     private var _binding: FragmentPanduanBinding? = null
     private val binding get() = _binding!!
+    private var tutorialPlayer: ExoPlayer? = null
+    private var tutorialGif: AnimatedImageDrawable? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -81,6 +92,7 @@ class PanduanFragment : Fragment() {
         sheetView.findViewById<TextView>(R.id.tv_modal_steps_count).text = detail.steps.size.toString()
         sheetView.findViewById<TextView>(R.id.tv_modal_equipment).text = exercise.equipment
         sheetView.findViewById<TextView>(R.id.tv_modal_definition).text = detail.definition
+        configureTutorialMedia(sheetView, exercise, detail.tutorialMediaName, detail.tutorialMediaType)
 
         val llSteps = sheetView.findViewById<LinearLayout>(R.id.ll_modal_steps)
         detail.steps.forEachIndexed { index, step ->
@@ -106,7 +118,139 @@ class PanduanFragment : Fragment() {
             dialog.dismiss()
         }
 
+        dialog.setOnDismissListener {
+            releaseTutorialMedia()
+        }
+
         dialog.show()
+    }
+
+    private fun configureTutorialMedia(
+        sheetView: View,
+        exercise: Exercise,
+        mediaName: String,
+        mediaType: TutorialMediaType
+    ) {
+        releaseTutorialMedia()
+
+        val playerView = sheetView.findViewById<PlayerView>(R.id.player_modal_tutorial)
+        val placeholder = sheetView.findViewById<ImageView>(R.id.iv_modal_video_placeholder)
+        val dimView = sheetView.findViewById<View>(R.id.view_modal_video_dim)
+        val playButton = sheetView.findViewById<ImageButton>(R.id.btn_modal_video_play)
+        val statusText = sheetView.findViewById<TextView>(R.id.tv_modal_video_status)
+
+        placeholder.setImageResource(exercise.imageResId)
+        playerView.visibility = View.GONE
+        placeholder.visibility = View.VISIBLE
+        dimView.visibility = View.VISIBLE
+        playButton.visibility = View.GONE
+        statusText.visibility = View.VISIBLE
+        statusText.text = "Video tutorial belum tersedia"
+
+        val mediaResId = resolveRawResource(mediaName)
+        if (mediaResId == 0) return
+
+        statusText.text = "Ketuk untuk memutar tutorial"
+        playButton.visibility = View.VISIBLE
+
+        when (mediaType) {
+            TutorialMediaType.MP4 -> configureMp4Tutorial(
+                playerView = playerView,
+                placeholder = placeholder,
+                dimView = dimView,
+                playButton = playButton,
+                statusText = statusText,
+                mediaResId = mediaResId
+            )
+            TutorialMediaType.GIF -> configureGifTutorial(
+                placeholder = placeholder,
+                dimView = dimView,
+                playButton = playButton,
+                statusText = statusText,
+                mediaResId = mediaResId
+            )
+        }
+    }
+
+    private fun configureMp4Tutorial(
+        playerView: PlayerView,
+        placeholder: ImageView,
+        dimView: View,
+        playButton: ImageButton,
+        statusText: TextView,
+        mediaResId: Int
+    ) {
+        val context = requireContext()
+        val uri = Uri.parse("android.resource://${context.packageName}/$mediaResId")
+        val player = ExoPlayer.Builder(context).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+            setMediaItem(MediaItem.fromUri(uri))
+            prepare()
+        }
+        tutorialPlayer = player
+        playerView.player = player
+
+        fun startVideo() {
+            placeholder.visibility = View.GONE
+            dimView.visibility = View.GONE
+            statusText.visibility = View.GONE
+            playButton.visibility = View.GONE
+            playerView.visibility = View.VISIBLE
+            player.play()
+        }
+
+        playButton.setOnClickListener { startVideo() }
+        placeholder.setOnClickListener { startVideo() }
+    }
+
+    private fun configureGifTutorial(
+        placeholder: ImageView,
+        dimView: View,
+        playButton: ImageButton,
+        statusText: TextView,
+        mediaResId: Int
+    ) {
+        runCatching {
+            val source = ImageDecoder.createSource(resources, mediaResId)
+            ImageDecoder.decodeDrawable(source)
+        }.onSuccess { drawable ->
+            placeholder.setImageDrawable(drawable)
+            val animatedDrawable = drawable as? AnimatedImageDrawable
+            if (animatedDrawable == null) {
+                playButton.visibility = View.GONE
+                statusText.visibility = View.GONE
+                dimView.visibility = View.GONE
+                return@onSuccess
+            }
+            tutorialGif = animatedDrawable.apply {
+                repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+            }
+
+            fun startGif() {
+                dimView.visibility = View.GONE
+                statusText.visibility = View.GONE
+                playButton.visibility = View.GONE
+                animatedDrawable.start()
+            }
+
+            playButton.setOnClickListener { startGif() }
+            placeholder.setOnClickListener { startGif() }
+        }.onFailure {
+            playButton.visibility = View.GONE
+            statusText.text = "Video tutorial belum tersedia"
+        }
+    }
+
+    private fun resolveRawResource(resourceName: String): Int {
+        if (resourceName.isBlank()) return 0
+        return resources.getIdentifier(resourceName, "raw", requireContext().packageName)
+    }
+
+    private fun releaseTutorialMedia() {
+        tutorialGif?.stop()
+        tutorialGif = null
+        tutorialPlayer?.release()
+        tutorialPlayer = null
     }
 
     private fun createStepItem(number: Int, text: String): View {
@@ -143,6 +287,7 @@ class PanduanFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        releaseTutorialMedia()
         _binding = null
     }
 }

@@ -61,7 +61,7 @@ object ExerciseRepository {
                 equipment = "Dumbbell",
                 muscleTags = listOf("Lateral Deltoid", "Anterior Deltoid", "Trapezius"),
                 stepCount = 5,
-                firstStepBrief = "Pastikan seluruh tubuh terlihat dan tubuh menghadap kedepan kamera"
+                firstStepBrief = "Duduk atau berdiri tegak, pastikan tubuh atas dan kedua lengan terlihat menghadap depan kamera"
             ),
             Exercise(
                 id = "4",

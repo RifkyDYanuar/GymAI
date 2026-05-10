@@ -78,19 +78,15 @@ class RiwayatAdapter : ListAdapter<WorkoutSession, RiwayatAdapter.HistoryViewHol
                 else -> R.drawable.logo
             }
 
-            // Feedback Section
-            val feedbackText = when {
-                !session.feedbackSummary.isNullOrBlank() -> session.feedbackSummary
-                !session.mostFrequentFeedback.isNullOrBlank() -> "Feedback utama:\n- ${session.mostFrequentFeedback}"
-                else -> null
-            }
-
-            if (!feedbackText.isNullOrEmpty()) {
+            // Feedback Section — tampilkan hanya teks koreksi + jumlah rep, tanpa persen
+            val feedbackDisplay = buildFeedbackDisplay(session)
+            if (!feedbackDisplay.isNullOrEmpty()) {
                 binding.layoutFeedback.visibility = View.VISIBLE
-                binding.tvFeedbackHistory.text = feedbackText
+                binding.tvFeedbackHistory.text = feedbackDisplay
             } else {
                 binding.layoutFeedback.visibility = View.GONE
             }
+
 
             val playableVideo = EvaluationVideoStorage.resolvePlayableVideo(context, session.evaluationVideoPath)
             if (playableVideo != null) {
@@ -140,6 +136,36 @@ class RiwayatAdapter : ListAdapter<WorkoutSession, RiwayatAdapter.HistoryViewHol
                     }
                 }
             }
+        }
+
+        /**
+         * Bangun teks feedback ringkas untuk list riwayat.
+         * Format feedbackSummary dari DB: "Evaluasi sesi:\n- Teks (Nx, Y%)\n- ..."
+         * Hasil: "• Teks (3x)\n• Teks2 (1x)" — tanpa angka persen.
+         */
+        private fun buildFeedbackDisplay(session: WorkoutSession): String? {
+            val summary = session.feedbackSummary
+            if (!summary.isNullOrBlank()) {
+                // Ambil baris yang dimulai dengan "-"
+                val items = summary.lines()
+                    .map { it.trim() }
+                    .filter { it.startsWith("-") }
+                    .take(3)
+                    .mapNotNull { line ->
+                        // Hapus prefix "-" lalu strip bagian ", Y%)" dari "(Nx, Y%)"
+                        val raw = line.removePrefix("-").trim()
+                        // Regex: "(Nx, Y%)" → "(Nx)"
+                        val cleaned = raw.replace(Regex(""",\s*\d+%\)"""), ")")
+                        cleaned.ifBlank { null }
+                    }
+                if (items.isNotEmpty()) {
+                    return items.joinToString("\n") { "• $it" }
+                }
+            }
+            // Fallback: gunakan mostFrequentFeedback saja
+            return session.mostFrequentFeedback
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "• $it" }
         }
     }
 

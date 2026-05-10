@@ -16,6 +16,13 @@
         <action
             android:id="@+id/action_exercise_to_detection"
             app:destination="@id/deteksiFragment" />
+        <action
+            android:id="@+id/action_dashboard_to_latihan"
+            app:destination="@id/latihanFragment"
+            app:enterAnim="@anim/slide_in_bottom"
+            app:exitAnim="@anim/scale_fade_out"
+            app:popEnterAnim="@anim/scale_fade_in"
+            app:popExitAnim="@anim/slide_out_bottom" />
     </fragment>
 
     <fragment

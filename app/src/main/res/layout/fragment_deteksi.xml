@@ -6,16 +6,16 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- Camera Preview (Full Screen) -->
+    <!-- Camera Preview -->
     <androidx.camera.view.PreviewView
         android:id="@+id/preview_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/result_panel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:scaleType="fitCenter" />
+        app:scaleType="fillCenter" />
 
     <!-- Skeleton Overlay (Matched with Preview) -->
     <com.modul.gymai.overlay.OverlayView
@@ -193,6 +193,19 @@
             android:layout_marginTop="8dp"
             android:gravity="center" />
 
+        <TextView
+            android:id="@+id/tv_cnn_indicator"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="@font/poppins"
+            android:gravity="center"
+            android:text="CNN1D TEST: --"
+            android:textColor="#8BFFB1"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
         <!-- Stop Button -->
         <Button
             android:id="@+id/btn_stop"
@@ -312,7 +325,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Atur jarak sekitar 1,5-2,5 meter, lalu sesuaikan sampai kepala dan kaki tetap masuk frame."
+                    android:text="Atur jarak sekitar 2,5-3 meter, lalu sesuaikan sampai kepala dan kaki tetap masuk frame."
                     android:textColor="@color/white"
                     android:textSize="14sp"
                     android:layout_marginStart="16dp"
