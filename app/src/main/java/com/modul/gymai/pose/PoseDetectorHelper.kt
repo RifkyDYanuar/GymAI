@@ -18,7 +18,7 @@ import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 class PoseDetectorHelper(
     private val onResults: (PoseResult) -> Unit,
     private val onError: (String) -> Unit
-) {
+) : IPoseDetector {
     companion object {
         private const val KEYPOINT_COUNT = 17
     }
@@ -29,12 +29,13 @@ class PoseDetectorHelper(
     init {
         val options = PoseDetectorOptions.Builder()
             .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+            .setPreferredHardwareConfigs(PoseDetectorOptions.CPU_GPU)
             .build()
         poseDetector = PoseDetection.getClient(options)
     }
 
     @ExperimentalGetImage
-    fun detect(imageProxy: ImageProxy) {
+    override fun detect(imageProxy: ImageProxy) {
         if (isProcessingFrame) {
             imageProxy.close()
             return
@@ -65,7 +66,7 @@ class PoseDetectorHelper(
         )
     }
 
-    fun detectBitmap(bitmap: Bitmap, recycleAfterUse: Boolean = true) {
+    override fun detectBitmap(bitmap: Bitmap, recycleAfterUse: Boolean) {
         if (isProcessingFrame) {
             if (recycleAfterUse && !bitmap.isRecycled) {
                 bitmap.recycle()
@@ -123,9 +124,7 @@ class PoseDetectorHelper(
                 }
 
                 val avgScore = if (filteredKeypoints.isNotEmpty()) totalScore / filteredKeypoints.size else 0f
-                // Pipeline: lepas busy flag & tutup imageProxy DULU
-                // agar ML Kit bisa mulai proses frame berikutnya
-                // sementara processResults berjalan paralel
+              
                 val result = PoseResult(
                     keypoints = filteredKeypoints,
                     score = avgScore,
@@ -144,9 +143,9 @@ class PoseDetectorHelper(
             }
     }
 
-    fun isBusy(): Boolean = isProcessingFrame
+    override fun isBusy(): Boolean = isProcessingFrame
 
-    fun close() {
+    override fun close() {
         isProcessingFrame = false
         poseDetector.close()
     }

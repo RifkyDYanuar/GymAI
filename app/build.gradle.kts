@@ -42,6 +42,22 @@ android {
     aaptOptions {
         noCompress += listOf("tflite")
     }
+    packaging {
+        jniLibs {
+            // ML Kit already bundles its own TFLite JNI runtime.
+            // Exclude duplicate .so files to prevent JNI registration failure.
+            pickFirsts += setOf(
+                "lib/x86/libtensorflowlite_jni.so",
+                "lib/x86_64/libtensorflowlite_jni.so",
+                "lib/armeabi-v7a/libtensorflowlite_jni.so",
+                "lib/arm64-v8a/libtensorflowlite_jni.so",
+                "lib/x86/libtensorflowlite_gpu_jni.so",
+                "lib/x86_64/libtensorflowlite_gpu_jni.so",
+                "lib/armeabi-v7a/libtensorflowlite_gpu_jni.so",
+                "lib/arm64-v8a/libtensorflowlite_gpu_jni.so"
+            )
+        }
+    }
 }
 
 dependencies {
@@ -81,6 +97,7 @@ dependencies {
 
     // TensorFlow Lite
     implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.gpu)
 
     // Media3 playback
     implementation(libs.androidx.media3.exoplayer)

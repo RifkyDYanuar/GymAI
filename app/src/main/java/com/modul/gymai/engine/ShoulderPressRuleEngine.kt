@@ -15,11 +15,17 @@ class ShoulderPressRuleEngine(
         private const val FRONT_VIEW_SHOULDER_DISTANCE_MIN = 0.10f
         private const val FRONT_VIEW_HIP_DISTANCE_MIN = 0.06f
         private const val READY_FRAMES = 4
-        private const val READY_ELBOW_MIN = 65f
-        private const val READY_ELBOW_MAX = 125f
-        private const val READY_ELBOW_BELOW_SHOULDER_MAX = 0.13f
-        private const val READY_WRIST_BELOW_SHOULDER_MAX = 0.18f
-        private const val START_ELBOW_MIN = 126f
+        private const val READY_ELBOW_MIN = 78f
+        private const val READY_ELBOW_MAX = 115f
+        private const val READY_SHOULDER_TORSO_MIN = 68f
+        private const val READY_SHOULDER_TORSO_MAX = 92f
+        private const val READY_ELBOW_BELOW_SHOULDER_MIN = 0.015f
+        private const val READY_ELBOW_BELOW_SHOULDER_MAX = 0.22f
+        private const val READY_WRIST_BELOW_SHOULDER_MAX = 0.20f
+        private const val READY_ELBOW_DROP_TORSO_RATIO = 0.58f
+        private const val READY_ELBOW_TORSO_SYMMETRY_THRESHOLD = 18f
+        private const val READY_WRIST_HEIGHT_SYMMETRY_THRESHOLD = 0.14f
+        private const val START_ELBOW_MIN = 144f
         private const val ELBOW_PEAK_MIN = 150f
         private const val ELBOW_PEAK_MAX = 167f
         private const val ELBOW_LOCKOUT_MAX = 168f
@@ -35,8 +41,16 @@ class ShoulderPressRuleEngine(
         private const val VIOLATION_THRESHOLD_MS = 220L
         private const val VIOLATION_RATIO_THRESHOLD = 0.24f
         private const val RETURN_HOLD_MIN_MS = 1_000L
-        private const val RETURN_ELBOW_BELOW_SHOULDER_MAX = 0.10f
-        private const val ELBOW_DROP_TORSO_RATIO = 0.34f
+        private const val RETURN_ELBOW_BELOW_SHOULDER_MAX = 0.16f
+        private const val ELBOW_DROP_TORSO_RATIO = 0.46f
+        private const val ELBOW_COLLAPSED_TORSO_MAX = 52f
+        private const val ELBOW_COLLAPSED_DROP_TORSO_RATIO = 0.50f
+        private const val HANDS_DOWN_WRIST_BELOW_SHOULDER_MIN = 0.16f
+        private const val HANDS_DOWN_WRIST_DROP_TORSO_RATIO = 0.48f
+        private const val HANDS_DOWN_SINGLE_WRIST_EXTRA = 0.06f
+        private const val RETURN_SAFE_ELBOW_BELOW_SHOULDER_MAX = 0.15f
+        private const val RETURN_SAFE_ELBOW_DROP_TORSO_RATIO = 0.44f
+        private const val POST_REP_GRACE_FRAMES = 30
     }
 
     private var cycleActive = false
@@ -44,10 +58,12 @@ class ShoulderPressRuleEngine(
     private var cyclePeakTimeMs = 0L
     private var cycleLastSampleTimeMs = 0L
     private var readyFrames = 0
+    private var readyLatched = false
     private var peakReached = false
     private var tempoViolationDetected = false
     private var elbowLockoutViolationDetected = false
     private var elbowDropViolationDetected = false
+    private var badRepAlreadyReported = false
     private var lastCompletedWithElbowDrop = false
     private var anchorTorsoAngle = 0f
     private var torsoViolationMs = 0L
@@ -74,8 +90,8 @@ class ShoulderPressRuleEngine(
             cancelCycle()
             return RuleResult(
                 isValid = false,
-                feedback = "Pastikan kedua lengan terlihat jelas",
-                liveFeedback = "Pastikan kedua lengan terlihat jelas",
+                feedback = "Pastikan seluruh tubuh terlihat di kamera",
+                liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
                 repStatus = currentRepStatus(),
                 isPositionIssue = true
             )
@@ -102,26 +118,12 @@ class ShoulderPressRuleEngine(
         // Kurangi grace period per frame
         if (postRepGraceFrames > 0) postRepGraceFrames--
 
-        if (!cycleActive && lastCompletedWithElbowDrop) {
-            if (isElbowDroppedTooLow(metrics)) {
-                val feedback = buildFeedback(ShoulderPressFormError.ELBOW_DROP, "Siap untuk repetisi berikutnya")
-                return RuleResult(
-                    isValid = false,
-                    feedback = feedback,
-                    primaryMetric = metrics.avgElbowAngle,
-                    secondaryMetric = metrics.avgArmTorsoAngle,
-                    torsoAngle = metrics.torsoAngle,
-                    liveFeedback = feedback,
-                    repStatus = BicepRepStatus.REP_BAD,
-                    repCompleted = false,
-                    shouldCountRep = false,
-                    isPositionIssue = false
-                )
-            }
-            lastCompletedWithElbowDrop = false
+        if (isReadyStartPosition(metrics) || isHandsFullyDown(metrics)) {
+            badRepAlreadyReported = false
         }
 
-        if (!cycleActive && postRepGraceFrames == 0 && !isReadyStartPosition(metrics)) {
+        if (!isReadyStartPosition(metrics) && isHandsFullyDown(metrics)) {
+            reset(keepReady = false)
             return RuleResult(
                 isValid = false,
                 feedback = "Letakkan dumbel di atas bahu",
@@ -134,6 +136,71 @@ class ShoulderPressRuleEngine(
                 shouldCountRep = false,
                 isPositionIssue = true
             )
+        }
+
+        if (!cycleActive && lastCompletedWithElbowDrop) {
+            if (!isReadyStartPosition(metrics)) {
+                if (isHandsFullyDown(metrics)) {
+                    lastCompletedWithElbowDrop = false
+                } else {
+                    val feedback = buildFeedback(ShoulderPressFormError.ELBOW_DROP, "Siap untuk repetisi berikutnya")
+                    return RuleResult(
+                        isValid = false,
+                        feedback = feedback,
+                        primaryMetric = metrics.avgElbowAngle,
+                        secondaryMetric = metrics.avgArmTorsoAngle,
+                        torsoAngle = metrics.torsoAngle,
+                        liveFeedback = feedback,
+                        repStatus = BicepRepStatus.REP_BAD,
+                        repCompleted = false,
+                        shouldCountRep = false,
+                        isPositionIssue = false
+                    )
+                }
+            }
+            lastCompletedWithElbowDrop = false
+        }
+
+        if (!cycleActive && postRepGraceFrames == 0 && !isReadyStartPosition(metrics)) {
+            if (readyLatched && isLeavingReadyToPress(metrics)) {
+                startCycle(now, metrics)
+            } else if (readyLatched && !isHandsFullyDown(metrics)) {
+                val elbowCollapsed = isElbowCollapsedToSide(metrics)
+                val shouldCompleteBadRep = elbowCollapsed && !badRepAlreadyReported
+                if (shouldCompleteBadRep) {
+                    badRepAlreadyReported = true
+                    lastCompletedWithElbowDrop = true
+                }
+                val feedback = buildFeedback(
+                    error = if (elbowCollapsed) ShoulderPressFormError.ELBOW_DROP else ShoulderPressFormError.RANGE_INCOMPLETE,
+                    defaultMessage = "Gerakan shoulder press kurang tepat"
+                )
+                return RuleResult(
+                    isValid = false,
+                    feedback = feedback,
+                    primaryMetric = metrics.avgElbowAngle,
+                    secondaryMetric = metrics.avgArmTorsoAngle,
+                    torsoAngle = metrics.torsoAngle,
+                    liveFeedback = feedback,
+                    repStatus = BicepRepStatus.REP_BAD,
+                    repCompleted = shouldCompleteBadRep,
+                    shouldCountRep = false,
+                    isPositionIssue = false
+                )
+            } else {
+                return RuleResult(
+                    isValid = false,
+                    feedback = "Letakkan dumbel di atas bahu",
+                    primaryMetric = metrics.avgElbowAngle,
+                    secondaryMetric = metrics.avgArmTorsoAngle,
+                    torsoAngle = metrics.torsoAngle,
+                    liveFeedback = "Letakkan dumbel di atas bahu",
+                    repStatus = BicepRepStatus.IDLE,
+                    repCompleted = false,
+                    shouldCountRep = false,
+                    isPositionIssue = true
+                )
+            }
         }
 
         val torsoStableNow = isTorsoStable(metrics)
@@ -161,19 +228,22 @@ class ShoulderPressRuleEngine(
             }
             // Deteksi siku jatuh terlalu rendah — hanya dicheck setelah peak tercapai
             // (fase turun kembali ke bawah). Siku hampir menempel sisi badan.
-            if (peakReached && isElbowDroppedTooLow(metrics)) {
+            if (isElbowCollapsedToSide(metrics) || (peakReached && isElbowDroppedTooLow(metrics))) {
                 elbowDropViolationDetected = true
             }
         }
 
         if (cycleActive && !peakReached && isBackToBottom(metrics)) {
-            val completedViolation = if (cycleMaxElbowAngle >= START_ELBOW_MIN) {
-                ShoulderPressFormError.RANGE_INCOMPLETE
-            } else {
-                null
+            val completedViolation = when {
+                elbowDropViolationDetected -> ShoulderPressFormError.ELBOW_DROP
+                cycleMaxElbowAngle >= START_ELBOW_MIN -> ShoulderPressFormError.RANGE_INCOMPLETE
+                else -> null
             }
             val resetFeedback = buildFeedback(completedViolation, "Siap untuk repetisi berikutnya")
-            val repCompleted = completedViolation != null
+            val repCompleted = completedViolation != null && !badRepAlreadyReported
+            if (completedViolation != null) {
+                badRepAlreadyReported = true
+            }
             val repStatus = if (repCompleted) BicepRepStatus.REP_BAD else BicepRepStatus.IDLE
             reset(keepReady = true)
             return RuleResult(
@@ -190,8 +260,25 @@ class ShoulderPressRuleEngine(
         }
 
         if (cycleActive && peakReached && isBackToBottom(metrics)) {
-            val immediateViolation = determineImmediateReturnViolation(now)
-            if (immediateViolation == null && returnHoldStartTimeMs == 0L) {
+            val immediateViolation = determineImmediateReturnViolation(now, metrics)
+            if (immediateViolation != null) {
+                val shouldCompleteBadRep = !badRepAlreadyReported
+                badRepAlreadyReported = true
+                reset(keepReady = true)
+                val feedback = buildFeedback(immediateViolation, "Gerakan shoulder press kurang tepat")
+                return RuleResult(
+                    isValid = false,
+                    feedback = feedback,
+                    primaryMetric = metrics.avgElbowAngle,
+                    secondaryMetric = metrics.avgArmTorsoAngle,
+                    torsoAngle = metrics.torsoAngle,
+                    liveFeedback = feedback,
+                    repStatus = BicepRepStatus.REP_BAD,
+                    repCompleted = shouldCompleteBadRep,
+                    shouldCountRep = false
+                )
+            }
+            if (returnHoldStartTimeMs == 0L) {
                 returnHoldStartTimeMs = now
                 return RuleResult(
                     isValid = true,
@@ -205,7 +292,7 @@ class ShoulderPressRuleEngine(
                     shouldCountRep = false
                 )
             }
-            if (immediateViolation == null && now - returnHoldStartTimeMs < RETURN_HOLD_MIN_MS) {
+            if (now - returnHoldStartTimeMs < RETURN_HOLD_MIN_MS) {
                 return RuleResult(
                     isValid = true,
                     feedback = "Tahan siku sejajar bahu sebentar",
@@ -226,6 +313,10 @@ class ShoulderPressRuleEngine(
             )
             val repStatus = if (completedViolation == null) BicepRepStatus.REP_GOOD else BicepRepStatus.REP_BAD
             val shouldCountRep = completedViolation == null
+            val repCompleted = completedViolation == null || !badRepAlreadyReported
+            if (completedViolation != null) {
+                badRepAlreadyReported = true
+            }
             return RuleResult(
                 isValid = shouldCountRep,
                 feedback = finalFeedback,
@@ -234,7 +325,7 @@ class ShoulderPressRuleEngine(
                 torsoAngle = metrics.torsoAngle,
                 liveFeedback = finalFeedback,
                 repStatus = repStatus,
-                repCompleted = true,
+                repCompleted = repCompleted,
                 shouldCountRep = shouldCountRep
             )
         }
@@ -251,7 +342,7 @@ class ShoulderPressRuleEngine(
             !symmetricNow -> "Jaga dorongan kedua lengan tetap simetris"
             cycleActive && !peakReached -> "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil"
             cycleActive -> "Dorong beban ke atas dengan kontrol"
-            else -> "Siap untuk repetisi berikutnya"
+            else -> "Dumbel di atas bahu, siap dorong ke atas"
         }
 
         return RuleResult(
@@ -279,6 +370,7 @@ class ShoulderPressRuleEngine(
         cyclePeakTimeMs = 0L
         cycleLastSampleTimeMs = 0L
         readyFrames = if (keepReady) READY_FRAMES else 0
+        readyLatched = keepReady
         peakReached = false
         tempoViolationDetected = false
         elbowLockoutViolationDetected = false
@@ -291,7 +383,7 @@ class ShoulderPressRuleEngine(
         returnHoldStartTimeMs = 0L
         // Jika rep baru saja selesai, beri grace 12 frame agar pesan
         // "Letakkan dumbel di atas bahu" tidak muncul saat tangan transisi turun
-        postRepGraceFrames = if (keepReady) 12 else 0
+        postRepGraceFrames = if (keepReady) POST_REP_GRACE_FRAMES else 0
     }
 
     private fun extractMetrics(keypoints: List<Keypoint>): RepMetrics? {
@@ -351,6 +443,16 @@ class ShoulderPressRuleEngine(
             rightShoulder.x, rightShoulder.y,
             rightWrist.x, rightWrist.y
         )
+        val leftElbowTorsoAngle = AngleUtils.angleBetween(
+            leftHip.x, leftHip.y,
+            leftShoulder.x, leftShoulder.y,
+            leftElbow.x, leftElbow.y
+        )
+        val rightElbowTorsoAngle = AngleUtils.angleBetween(
+            rightHip.x, rightHip.y,
+            rightShoulder.x, rightShoulder.y,
+            rightElbow.x, rightElbow.y
+        )
 
         val shoulderDistance = abs(leftShoulder.x - rightShoulder.x)
         val hipDistance = abs(leftHip.x - rightHip.x)
@@ -365,16 +467,20 @@ class ShoulderPressRuleEngine(
             hipDistance = hipDistance,
             avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2f,
             avgArmTorsoAngle = (leftArmTorsoAngle + rightArmTorsoAngle) / 2f,
+            avgElbowTorsoAngle = (leftElbowTorsoAngle + rightElbowTorsoAngle) / 2f,
             leftElbowAngle = leftElbowAngle,
             rightElbowAngle = rightElbowAngle,
             leftWristBelowShoulder = leftWrist.y - leftShoulder.y,
             rightWristBelowShoulder = rightWrist.y - rightShoulder.y,
+            avgWristBelowShoulder = ((leftWrist.y - leftShoulder.y) + (rightWrist.y - rightShoulder.y)) / 2f,
             elbowDiff = abs(leftElbowAngle - rightElbowAngle),
             armTorsoDiff = abs(leftArmTorsoAngle - rightArmTorsoAngle),
+            elbowTorsoDiff = abs(leftElbowTorsoAngle - rightElbowTorsoAngle),
             wristHeightDiff = abs(leftWrist.y - rightWrist.y),
             torsoAngle = torsoAngle,
             // Positif = siku di bawah bahu (sistem koordinat Y bertambah ke bawah)
             avgElbowBelowShoulder = ((leftElbow.y - leftShoulder.y) + (rightElbow.y - rightShoulder.y)) / 2f,
+            minElbowBelowShoulder = minOf(leftElbow.y - leftShoulder.y, rightElbow.y - rightShoulder.y),
             maxElbowBelowShoulder = maxOf(leftElbow.y - leftShoulder.y, rightElbow.y - rightShoulder.y),
             avgShoulderHipHeight = (
                 abs(leftHip.y - leftShoulder.y) +
@@ -388,13 +494,22 @@ class ShoulderPressRuleEngine(
 
         if (isReadyStartPosition(metrics)) {
             readyFrames = (readyFrames + 1).coerceAtMost(READY_FRAMES + 2)
+            readyLatched = true
         } else {
-            readyFrames = 0
+            if (!readyLatched) {
+                readyFrames = 0
+            }
         }
     }
 
     private fun canStartCycle(metrics: RepMetrics): Boolean {
-        return readyFrames >= READY_FRAMES && metrics.avgElbowAngle >= START_ELBOW_MIN
+        return readyLatched && isLeavingReadyToPress(metrics)
+    }
+
+    private fun isLeavingReadyToPress(metrics: RepMetrics): Boolean {
+        return metrics.avgElbowAngle > READY_ELBOW_MAX + 6f ||
+            metrics.avgElbowTorsoAngle > READY_SHOULDER_TORSO_MAX + 8f ||
+            metrics.avgArmTorsoAngle >= 105f
     }
 
     private fun isFacingFront(metrics: RepMetrics): Boolean {
@@ -403,11 +518,19 @@ class ShoulderPressRuleEngine(
     }
 
     private fun isReadyStartPosition(metrics: RepMetrics): Boolean {
+        val elbowDropLimit = maxOf(
+            READY_ELBOW_BELOW_SHOULDER_MAX,
+            metrics.avgShoulderHipHeight * READY_ELBOW_DROP_TORSO_RATIO
+        )
         return metrics.avgElbowAngle in READY_ELBOW_MIN..READY_ELBOW_MAX &&
-            metrics.maxElbowBelowShoulder <= READY_ELBOW_BELOW_SHOULDER_MAX &&
+            metrics.avgElbowTorsoAngle in READY_SHOULDER_TORSO_MIN..READY_SHOULDER_TORSO_MAX &&
+            metrics.avgElbowBelowShoulder >= READY_ELBOW_BELOW_SHOULDER_MIN &&
+            metrics.minElbowBelowShoulder >= -READY_ELBOW_BELOW_SHOULDER_MIN &&
+            metrics.maxElbowBelowShoulder <= elbowDropLimit &&
             metrics.leftWristBelowShoulder <= READY_WRIST_BELOW_SHOULDER_MAX &&
             metrics.rightWristBelowShoulder <= READY_WRIST_BELOW_SHOULDER_MAX &&
-            metrics.wristHeightDiff <= WRIST_HEIGHT_SYMMETRY_THRESHOLD
+            metrics.elbowTorsoDiff <= READY_ELBOW_TORSO_SYMMETRY_THRESHOLD &&
+            metrics.wristHeightDiff <= READY_WRIST_HEIGHT_SYMMETRY_THRESHOLD
     }
 
     private fun startCycle(now: Long, metrics: RepMetrics) {
@@ -416,9 +539,11 @@ class ShoulderPressRuleEngine(
         cyclePeakTimeMs = 0L
         cycleLastSampleTimeMs = now
         readyFrames = 0
+        readyLatched = true
         peakReached = false
         tempoViolationDetected = false
         elbowLockoutViolationDetected = false
+        elbowDropViolationDetected = false
         anchorTorsoAngle = metrics.torsoAngle
         torsoViolationMs = 0L
         symmetryViolationMs = 0L
@@ -443,7 +568,7 @@ class ShoulderPressRuleEngine(
         return error
     }
 
-    private fun determineImmediateReturnViolation(now: Long): ShoulderPressFormError? {
+    private fun determineImmediateReturnViolation(now: Long, metrics: RepMetrics): ShoulderPressFormError? {
         val fullRepDuration = now - cycleStartTimeMs
         if (cyclePeakTimeMs > 0L && fullRepDuration < MIN_FULL_REP_MS) {
             return ShoulderPressFormError.TEMPO_TOO_FAST
@@ -451,6 +576,7 @@ class ShoulderPressRuleEngine(
         return when {
             elbowLockoutViolationDetected -> ShoulderPressFormError.ELBOW_LOCKOUT
             elbowDropViolationDetected -> ShoulderPressFormError.ELBOW_DROP
+            !isSafeReturnPosition(metrics) -> ShoulderPressFormError.ELBOW_DROP
             hasSignificantViolation(torsoViolationMs, fullRepDuration) -> ShoulderPressFormError.TORSO_UNSTABLE
             hasSignificantViolation(symmetryViolationMs, fullRepDuration) -> ShoulderPressFormError.ASYMMETRIC
             else -> null
@@ -505,6 +631,34 @@ class ShoulderPressRuleEngine(
         return metrics.maxElbowBelowShoulder > toleratedDrop
     }
 
+    private fun isElbowCollapsedToSide(metrics: RepMetrics): Boolean {
+        val deepDrop = maxOf(
+            READY_ELBOW_BELOW_SHOULDER_MAX,
+            metrics.avgShoulderHipHeight * ELBOW_COLLAPSED_DROP_TORSO_RATIO
+        )
+        return metrics.avgElbowTorsoAngle <= ELBOW_COLLAPSED_TORSO_MAX ||
+            (
+                metrics.avgElbowBelowShoulder > deepDrop &&
+                    metrics.avgElbowTorsoAngle < READY_SHOULDER_TORSO_MIN
+                )
+    }
+
+    private fun isHandsFullyDown(metrics: RepMetrics): Boolean {
+        val wristDropLimit = maxOf(
+            HANDS_DOWN_WRIST_BELOW_SHOULDER_MIN,
+            metrics.avgShoulderHipHeight * HANDS_DOWN_WRIST_DROP_TORSO_RATIO
+        )
+        val bothWristsClearlyDown =
+            metrics.leftWristBelowShoulder >= wristDropLimit &&
+                metrics.rightWristBelowShoulder >= wristDropLimit
+        val averageWristClearlyDown = metrics.avgWristBelowShoulder >= wristDropLimit
+        val oneWristFarDown =
+            maxOf(metrics.leftWristBelowShoulder, metrics.rightWristBelowShoulder) >=
+                wristDropLimit + HANDS_DOWN_SINGLE_WRIST_EXTRA
+
+        return bothWristsClearlyDown || (averageWristClearlyDown && oneWristFarDown)
+    }
+
     private fun isOverheadLockout(metrics: RepMetrics): Boolean {
         return metrics.avgElbowAngle >= ELBOW_LOCKOUT_MAX &&
             metrics.avgArmTorsoAngle in ARM_TORSO_PEAK_MIN..ARM_TORSO_PEAK_MAX
@@ -512,6 +666,14 @@ class ShoulderPressRuleEngine(
 
     private fun isBackToBottom(metrics: RepMetrics): Boolean {
         return metrics.avgElbowAngle <= RETURN_ELBOW_MAX
+    }
+
+    private fun isSafeReturnPosition(metrics: RepMetrics): Boolean {
+        val safeDrop = maxOf(
+            RETURN_SAFE_ELBOW_BELOW_SHOULDER_MAX,
+            metrics.avgShoulderHipHeight * RETURN_SAFE_ELBOW_DROP_TORSO_RATIO
+        )
+        return metrics.maxElbowBelowShoulder <= safeDrop
     }
 
     private fun isTorsoStable(metrics: RepMetrics): Boolean {
@@ -549,16 +711,20 @@ class ShoulderPressRuleEngine(
         val hipDistance: Float,
         val avgElbowAngle: Float,
         val avgArmTorsoAngle: Float,
+        val avgElbowTorsoAngle: Float,
         val leftElbowAngle: Float,
         val rightElbowAngle: Float,
         val leftWristBelowShoulder: Float,
         val rightWristBelowShoulder: Float,
+        val avgWristBelowShoulder: Float,
         val elbowDiff: Float,
         val armTorsoDiff: Float,
+        val elbowTorsoDiff: Float,
         val wristHeightDiff: Float,
         val torsoAngle: Float,
         // Rata-rata seberapa jauh siku di bawah bahu (positif = siku lebih rendah dari bahu)
         val avgElbowBelowShoulder: Float,
+        val minElbowBelowShoulder: Float,
         val maxElbowBelowShoulder: Float,
         val avgShoulderHipHeight: Float
     )

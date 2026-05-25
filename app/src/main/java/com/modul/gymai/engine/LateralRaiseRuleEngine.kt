@@ -69,8 +69,8 @@ class LateralRaiseRuleEngine(
             cancelCycle()
             return RuleResult(
                 isValid = false,
-                feedback = "Pastikan tubuh terlihat jelas di kamera",
-                liveFeedback = "Pastikan tubuh terlihat jelas di kamera",
+                feedback = "Pastikan seluruh tubuh terlihat di kamera",
+                liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
                 repStatus = currentRepStatus(),
                 isPositionIssue = true
             )
@@ -94,8 +94,8 @@ class LateralRaiseRuleEngine(
             cancelCycle()
             return RuleResult(
                 isValid = false,
-                feedback = "Pastikan kedua lengan terlihat jelas",
-                liveFeedback = "Pastikan kedua lengan terlihat jelas",
+                feedback = "Pastikan seluruh tubuh terlihat di kamera",
+                liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
                 repStatus = currentRepStatus(),
                 isPositionIssue = true
             )

@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit
  * - Preview binds to PreviewView (UI).
  * - ImageAnalysis provides ImageProxy frames for pose inference.
  * - Optimized for ML Kit Pose Detection.
+ * - Mendukung YOLO_PERFORMANCE mode dengan resolusi analysis 640×480.
  */
 class CameraManager(
     private val context: Context,
@@ -42,12 +43,15 @@ class CameraManager(
     enum class PerformanceMode {
         DEFAULT,
         LIVE_PERFORMANCE,
-        CONSERVATIVE_LIVE_PERFORMANCE
+        CONSERVATIVE_LIVE_PERFORMANCE,
+        /** Mode khusus YOLO: resolusi analysis 640×480 agar tidak upscale ke 640×640. */
+        YOLO_PERFORMANCE
     }
 
     companion object {
         private const val TAG = "CameraManager"
         private const val MAIN_THREAD_BIND_TIMEOUT_MS = 5000L
+
         private data class CameraPerformanceProfile(
             val backPreviewResolutions: List<Size>,
             val frontPreviewResolutions: List<Size>,
@@ -105,6 +109,30 @@ class CameraManager(
             ),
             frontAnalysisResolutions = listOf(
                 Size(320, 240),
+            )
+        )
+
+        /**
+         * Profil YOLO: analysis 640×480 agar tidak perlu upscale ke 640×640.
+         * Preview tetap 1280×720 untuk tampilan tajam di layar.
+         * Fallback ke 640×360 jika device tidak support 640×480 analysis.
+         */
+        private val YOLO_PERFORMANCE_PROFILE = CameraPerformanceProfile(
+            backPreviewResolutions = listOf(
+                Size(1280, 720),
+                Size(960, 540),
+            ),
+            frontPreviewResolutions = listOf(
+                Size(960, 540),
+                Size(640, 480),
+            ),
+            backAnalysisResolutions = listOf(
+                Size(640, 480),
+                Size(640, 360),
+            ),
+            frontAnalysisResolutions = listOf(
+                Size(640, 480),
+                Size(640, 360),
             )
         )
 
@@ -205,6 +233,7 @@ class CameraManager(
                         *useCases.toTypedArray()
                     )
                     applyExposureForCurrentLens()
+                    applyMinimumZoomForCurrentLens()
                     Log.d(
                         TAG,
                         "Camera bound successfully. Profile=$profileName, " +
@@ -280,6 +309,10 @@ class CameraManager(
             PerformanceMode.CONSERVATIVE_LIVE_PERFORMANCE -> listOf(
                 "conservative_live_performance" to CONSERVATIVE_LIVE_PERFORMANCE_PROFILE
             )
+            PerformanceMode.YOLO_PERFORMANCE -> listOf(
+                "yolo_performance" to YOLO_PERFORMANCE_PROFILE,
+                "live_performance" to LIVE_PERFORMANCE_PROFILE
+            )
         }
     }
 
@@ -307,6 +340,36 @@ class CameraManager(
             Log.e(TAG, "Timed out while waiting for camera use cases to bind on main thread")
         }
         return completed && success
+    }
+
+    private fun applyMinimumZoomForCurrentLens() {
+        val camera = boundCamera ?: return
+        val zoomState = camera.cameraInfo.zoomState.value ?: run {
+            Log.d(TAG, "Zoom state is not available for current camera")
+            return
+        }
+        val minimumZoomRatio = zoomState.minZoomRatio
+        if (!minimumZoomRatio.isFinite() || minimumZoomRatio <= 0f) {
+            Log.d(TAG, "Ignoring unsupported minimum zoom ratio: $minimumZoomRatio")
+            return
+        }
+        if (zoomState.zoomRatio <= minimumZoomRatio + 0.01f) {
+            return
+        }
+
+        val zoomFuture = camera.cameraControl.setZoomRatio(minimumZoomRatio)
+        zoomFuture.addListener(
+            {
+                runCatching {
+                    zoomFuture.get()
+                }.onSuccess {
+                    Log.d(TAG, "Applied minimum zoom ratio: $minimumZoomRatio")
+                }.onFailure { error ->
+                    Log.w(TAG, "Failed to apply minimum zoom ratio: ${error.message}")
+                }
+            },
+            mainExecutor
+        )
     }
 
     fun stopCamera() {

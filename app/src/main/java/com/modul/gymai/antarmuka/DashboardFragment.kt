@@ -24,6 +24,12 @@ class DashboardFragment : Fragment() {
     private var _binding: FragmentDashboardBinding? = null
     private val binding get() = _binding!!
 
+    /** Posisi halaman yang di-skip saat swipe (FAB Evaluasi placeholder) */
+    private val SKIP_PAGE = 2
+
+    /** Menyimpan posisi terakhir sebelum berpindah halaman, untuk menentukan arah swipe */
+    private var lastPage = 0
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -58,6 +64,22 @@ class DashboardFragment : Fragment() {
         binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
+
+                // Jika mendarat di halaman Evaluasi (FAB placeholder), skip sesuai arah swipe
+                if (position == SKIP_PAGE) {
+                    val targetPage = if (lastPage < SKIP_PAGE) {
+                        // Swipe ke kanan (maju) → lewati ke Riwayat
+                        SKIP_PAGE + 1
+                    } else {
+                        // Swipe ke kiri (mundur) → lewati ke Panduan
+                        SKIP_PAGE - 1
+                    }
+                    binding.viewPager.setCurrentItem(targetPage, false)
+                    return
+                }
+
+                lastPage = position
+
                 val menuId = pageToMenuId(position)
                 if (menuId == null) {
                     // Halaman Latihan (placeholder FAB) — tidak ada item yang aktif

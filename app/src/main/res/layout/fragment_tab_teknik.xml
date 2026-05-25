@@ -2,14 +2,18 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingStart="16dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="@dimen/detail_bottom_action_space">
 
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
@@ -135,11 +139,11 @@
                         android:layout_marginStart="10dp" />
                 </LinearLayout>
 
-                <androidx.recyclerview.widget.RecyclerView
+                <LinearLayout
                     android:id="@+id/rv_tips"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false" />
+                    android:orientation="vertical" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 

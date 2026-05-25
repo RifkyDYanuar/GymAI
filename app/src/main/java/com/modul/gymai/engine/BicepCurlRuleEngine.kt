@@ -20,14 +20,18 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         private const val UPPER_ARM_SWING_THRESHOLD = 22f
         private const val MIN_UP_PHASE_MS = 450L
         private const val MIN_FULL_REP_MS = 900L
-        private const val ARM_SWITCH_SCORE_MARGIN = 0.55f
-        private const val ARM_SWITCH_CONFIRM_FRAMES = 4
-        private const val ARM_LOST_SCORE_THRESHOLD = 1.1f
+        private const val ARM_SWITCH_SCORE_MARGIN = 0.95f
+        private const val ARM_SWITCH_CONFIRM_FRAMES = 8
+        private const val ARM_LOST_SCORE_THRESHOLD = 0.95f
         private const val MAJOR_VIOLATION_THRESHOLD_MS = 250L
         private const val MAJOR_VIOLATION_RATIO_THRESHOLD = 0.30f
         private const val READY_EXTENSION_FRAMES = 4
         private const val START_ELBOW_FLEX_DELTA = 12f
         private const val START_WRIST_TRAVEL_RATIO_THRESHOLD = 0.18f
+        private const val SIDE_VIEW_CONFIDENCE_MIN = 0.5f
+        private const val SIDE_VIEW_SHOULDER_RATIO_MAX = 0.20f
+        private const val SIDE_VIEW_HIP_RATIO_MAX = 0.14f
+        private const val SIDE_VIEW_ABSOLUTE_SHOULDER_MAX = 0.10f
     }
 
     private var cycleActive = false
@@ -52,24 +56,31 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
     private var readyArmSide: ArmSide? = null
 
     override fun validate(pose: PoseResult?): RuleResult {
-        if (pose == null || !pose.isValid()) {
+        if (pose == null) {
             cancelCycle()
             return RuleResult(
                 isValid = false,
-                feedback = "Pastikan tubuh terlihat jelas di kamera",
-                liveFeedback = "Pastikan tubuh terlihat jelas di kamera",
+                feedback = "Pastikan seluruh tubuh terlihat di kamera",
+                liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
+                repStatus = currentRepStatus(),
+                isPositionIssue = true
+            )
+        }
+
+        val kp = pose.rawKeypoints
+        if (!pose.isValid() && !isBicepPoseUsable(kp)) {
+            cancelCycle()
+            return RuleResult(
+                isValid = false,
+                feedback = "Pastikan seluruh tubuh terlihat di kamera",
+                liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
                 repStatus = currentRepStatus(),
                 isPositionIssue = true
             )
         }
 
         val now = SystemClock.elapsedRealtime()
-        val kp = pose.rawKeypoints
-        val lShoulder = kp[Keypoint.LEFT_SHOULDER]
-        val rShoulder = kp[Keypoint.RIGHT_SHOULDER]
-
-        val shoulderDist = Math.abs(lShoulder.x - rShoulder.x)
-        if (lShoulder.confidence > 0.5f && rShoulder.confidence > 0.5f && shoulderDist > 0.15f) {
+        if (!isSideViewPose(kp)) {
             cancelCycle()
             return RuleResult(
                 isValid = false,
@@ -84,8 +95,8 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
             cancelCycle()
             return RuleResult(
                 isValid = false,
-                feedback = "Lengan tidak terdeteksi",
-                liveFeedback = "Lengan tidak terdeteksi",
+                feedback = "Pastikan seluruh tubuh terlihat di kamera",
+                liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
                 repStatus = currentRepStatus(),
                 isPositionIssue = true
             )
@@ -185,6 +196,79 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
             liveFeedback = liveFeedback,
             repStatus = currentRepStatus()
         )
+    }
+
+    private fun isSideViewPose(keypoints: List<Keypoint>): Boolean {
+        val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
+        val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
+        val leftShoulderVisible = leftShoulder.confidence > SIDE_VIEW_CONFIDENCE_MIN
+        val rightShoulderVisible = rightShoulder.confidence > SIDE_VIEW_CONFIDENCE_MIN
+        if (
+            leftShoulderVisible.xor(rightShoulderVisible) &&
+            isBicepPoseUsable(keypoints)
+        ) {
+            return true
+        }
+        if (!leftShoulderVisible || !rightShoulderVisible) {
+            return false
+        }
+
+        val shoulderWidth = abs(leftShoulder.x - rightShoulder.x)
+        val bodyTop = minOf(leftShoulder.y, rightShoulder.y)
+        val lowerBodyPoints = listOf(
+            keypoints[Keypoint.LEFT_HIP],
+            keypoints[Keypoint.RIGHT_HIP],
+            keypoints[Keypoint.LEFT_KNEE],
+            keypoints[Keypoint.RIGHT_KNEE],
+            keypoints[Keypoint.LEFT_ANKLE],
+            keypoints[Keypoint.RIGHT_ANKLE]
+        ).filter { it.confidence > 0.35f }
+
+        val bodyHeight = lowerBodyPoints
+            .maxOfOrNull { it.y }
+            ?.minus(bodyTop)
+            ?.coerceAtLeast(0.01f)
+
+        if (bodyHeight == null || bodyHeight < 0.18f) {
+            return shoulderWidth <= SIDE_VIEW_ABSOLUTE_SHOULDER_MAX
+        }
+
+        val shoulderRatio = shoulderWidth / bodyHeight
+        val leftHip = keypoints[Keypoint.LEFT_HIP]
+        val rightHip = keypoints[Keypoint.RIGHT_HIP]
+        val hipAccepted = if (
+            leftHip.confidence > SIDE_VIEW_CONFIDENCE_MIN &&
+            rightHip.confidence > SIDE_VIEW_CONFIDENCE_MIN
+        ) {
+            abs(leftHip.x - rightHip.x) / bodyHeight <= SIDE_VIEW_HIP_RATIO_MAX
+        } else {
+            true
+        }
+
+        return shoulderRatio <= SIDE_VIEW_SHOULDER_RATIO_MAX && hipAccepted
+    }
+
+    private fun isBicepPoseUsable(keypoints: List<Keypoint>): Boolean {
+        val leftArm = getArmCandidate(keypoints, ArmSide.LEFT) != null
+        val rightArm = getArmCandidate(keypoints, ArmSide.RIGHT) != null
+        if (!leftArm && !rightArm) return false
+
+        // Sengaja tidak memasukkan ankle karena saat side-view, ML Kit sering
+        // salah mendeteksi posisi ankle (terangkat / jitter) yang justru memperburuk
+        // validasi. Hip dan knee sudah cukup untuk memastikan tubuh terlihat.
+        val visibleBodyPoints = listOf(
+            Keypoint.NOSE,
+            Keypoint.LEFT_SHOULDER,
+            Keypoint.RIGHT_SHOULDER,
+            Keypoint.LEFT_HIP,
+            Keypoint.RIGHT_HIP,
+            Keypoint.LEFT_KNEE,
+            Keypoint.RIGHT_KNEE
+        ).count { index ->
+            keypoints.getOrNull(index)?.confidence ?: 0f > 0.35f
+        }
+
+        return visibleBodyPoints >= 4
     }
 
     private fun startCycle(now: Long, elbow: Keypoint, upperArmAngle: Float) {

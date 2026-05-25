@@ -4,8 +4,10 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.modul.gymai.databinding.ItemTechniqueBinding
 import com.modul.gymai.databinding.FragmentTabTeknikBinding
 import com.modul.gymai.ui.MaterialSymbols
 
@@ -46,10 +48,17 @@ class TeknikTabFragment : Fragment() {
             isNestedScrollingEnabled = false
         }
 
-        binding.rvTips.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = TipAdapter(detail.tips)
-            isNestedScrollingEnabled = false
+        binding.rvTips.removeAllViews()
+        detail.tips.forEach { tip ->
+            val itemBinding = ItemTechniqueBinding.inflate(layoutInflater, binding.rvTips, false)
+            itemBinding.tvTechnique.text = tip
+            MaterialSymbols.applyImageView(itemBinding.ivIcon, "lightbulb")
+            itemBinding.ivIcon.imageTintList = android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.parseColor("#F59E0B")
+            )
+            itemBinding.ivIcon.scaleType = ImageView.ScaleType.CENTER
+            itemBinding.root.setBackgroundResource(android.R.color.transparent)
+            binding.rvTips.addView(itemBinding.root)
         }
     }
 

@@ -2,4 +2,6 @@
 <resources>
     <dimen name="dot_active_width">24dp</dimen>
     <dimen name="dot_height">8dp</dimen>
+    <dimen name="detail_bottom_action_space">120dp</dimen>
+    <dimen name="detail_min_tab_height">420dp</dimen>
 </resources>

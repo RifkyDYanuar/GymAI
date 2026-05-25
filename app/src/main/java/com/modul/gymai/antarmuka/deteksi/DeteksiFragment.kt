@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.CountDownTimer
@@ -16,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageProxy
@@ -29,6 +31,7 @@ import com.modul.gymai.data.GymDatabase
 import com.modul.gymai.data.WorkoutRepository
 import com.modul.gymai.data.WorkoutSession
 import com.modul.gymai.databinding.DialogEvaluationSavedBinding
+import com.modul.gymai.databinding.DialogRecordingDecisionBinding
 import com.modul.gymai.databinding.FragmentDeteksiBinding
 import com.modul.gymai.ml.BicepCurlSequenceClassifier
 import com.modul.gymai.ml.BicepRepSequenceBuffer
@@ -39,6 +42,7 @@ import com.modul.gymai.ml.ShoulderPressSequenceClassifier
 import com.modul.gymai.ml.SquatRepSequenceBuffer
 import com.modul.gymai.ml.SquatSequenceClassifier
 import com.modul.gymai.pose.PoseDetectorHelper
+import com.modul.gymai.pose.PoseDetectorRouter
 import com.modul.gymai.pose.PoseResult
 import com.modul.gymai.engine.*
 import com.modul.gymai.pose.Keypoint
@@ -52,6 +56,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
@@ -63,25 +68,39 @@ class DeteksiFragment : Fragment() {
         private const val MOVEMENT_THRESHOLD = 0.005f // Sensitivity for "Diam"
         private const val STILLNESS_LIMIT = 30 // Frames before showing "Diam"
         private const val REP_RESULT_DISPLAY_MS = 1200L
+        private const val MOVEMENT_ERROR_DISPLAY_MS = 2200L
         private const val RULES_COUNTDOWN_SECONDS = 3
-        private const val LIVE_UI_UPDATE_INTERVAL_MS = 66L          // ~15fps UI update, ringan di main thread
-        private const val MIN_LIVE_INFERENCE_INTERVAL_MS = 33L        // min ~30fps inference
-        private const val DEFAULT_LIVE_INFERENCE_INTERVAL_MS = 50L    // default ~20fps
-        private const val MAX_LIVE_INFERENCE_INTERVAL_MS = 150L       // beri napas lebih di HP lambat
+        private const val LIVE_UI_UPDATE_INTERVAL_MS = 40L
+        private const val MIN_LIVE_INFERENCE_INTERVAL_MS = 33L
+        private const val DEFAULT_LIVE_INFERENCE_INTERVAL_MS = 45L
+        private const val MAX_LIVE_INFERENCE_INTERVAL_MS = 80L
+        private const val FRONT_CAMERA_MAX_LIVE_INFERENCE_INTERVAL_MS = 66L
+        private const val TRANSIENT_POSE_LOST_GRACE_FRAMES = 1
+        private const val ENABLE_EVALUATION_VIDEO_RECORDING = true
         private const val EVALUATION_RECORDING_FPS = 8
         private const val EVALUATION_RECORDING_FRAME_INTERVAL_MS = 1000L / EVALUATION_RECORDING_FPS
         private const val EVALUATION_RECORDING_MAX_DIMENSION = 540
-        private const val ENABLE_RULES_OVERLAY = false
+        private const val ENABLE_RULES_OVERLAY = true
         private const val ENABLE_SQUAT_CNN1D = true
-        private const val SQUAT_SIDE_TO_DIAGONAL_SHOULDER_MAX = 0.18f
+        private const val ENABLE_SHOULDER_PRESS_CNN1D = true
+        private const val BICEP_SIDE_VIEW_CONFIDENCE_MIN = 0.5f
+        private const val BICEP_SIDE_VIEW_SHOULDER_RATIO_MAX = 0.20f
+        private const val BICEP_SIDE_VIEW_HIP_RATIO_MAX = 0.14f
+        private const val BICEP_SIDE_VIEW_ABSOLUTE_SHOULDER_MAX = 0.10f
+        private const val BICEP_DISPLAY_ARM_LOST_SCORE = 1.0f
+        private const val BICEP_DISPLAY_ARM_SWITCH_MARGIN = 1.05f
+        private const val BICEP_DISPLAY_ARM_SWITCH_FRAMES = 8
         private const val SQUAT_BODY_SIDE_CONFIDENCE_MIN = 0.5f
+        private const val SQUAT_SIDE_SHOULDER_RATIO_MAX = 0.26f
+        private const val SQUAT_SIDE_HIP_RATIO_MAX = 0.22f
+        private const val SQUAT_SIDE_UPPER_AVERAGE_RATIO_MAX = 0.2f
     }
 
     private var _binding: FragmentDeteksiBinding? = null
     private val binding get() = _binding!!
 
     private lateinit var exerciseType: ExerciseType
-    private lateinit var poseDetectorHelper: PoseDetectorHelper
+    private lateinit var poseDetectorRouter: PoseDetectorRouter
     private lateinit var repCounter: RepetitionCounter
     private lateinit var cameraManager: CameraManager
     private lateinit var engine: ExerciseRuleEngine
@@ -101,10 +120,15 @@ class DeteksiFragment : Fragment() {
 
     private var lastKeypoints: List<Keypoint>? = null
     private var stillnessCount = 0
+    private var bicepDisplayArmSide: BicepDisplayArmSide? = null
+    private var pendingBicepDisplayArmSide: BicepDisplayArmSide? = null
+    private var pendingBicepDisplayArmFrames = 0
     private var repResultDisplayUntil = 0L
     private var repResultLabel = "SIAP"
     private var repResultFeedback = "Siap untuk repetisi berikutnya"
     private var repResultCorrect = true
+    private var movementErrorDisplayUntil = 0L
+    private var movementErrorFeedback = ""
     private var lastEvaluationDisplayPose: PoseResult? = null
     // State untuk overlay HUD di video rekaman
     @Volatile private var recordingLabel: String = "SIAP"
@@ -114,10 +138,14 @@ class DeteksiFragment : Fragment() {
     private var recordingBitmap: Bitmap? = null
     private var recordingSourceRect: Rect? = null
     private val recordingDrawExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val recordingDrawInFlight = AtomicBoolean(false)
     private var evaluationVideoPath: String? = null
     private var realtimeTtsManager: RealtimeTtsManager? = null
     private var hasRequestedEvaluationRecordingStart = false
     private var hasEvaluationRecordingFailed = false
+    private var shouldRecordEvaluationVideo = false
+    private var hasAnsweredEvaluationRecordingDecision = false
+    private var recordingDecisionDialog: AlertDialog? = null
     private var evaluationVideoRecorder: EvaluationVideoRecorder? = null
     private var hasSpokenRulesGuidance = false
     private var isSavingSession = false
@@ -156,6 +184,7 @@ class DeteksiFragment : Fragment() {
     enum class DetectionState {
         RULES_OVERLAY,
         RULES_COUNTDOWN,
+        RECORDING_DECISION,
         EVALUATING
     }
 
@@ -185,7 +214,7 @@ class DeteksiFragment : Fragment() {
             ttsManager.setOnUtteranceDoneListener { utteranceKey ->
                 activity?.runOnUiThread {
                     when (utteranceKey) {
-                        "rules:guidance" -> announceRulesCountdownIntroIfNeeded()
+                        "rules:guidance" -> showEvaluationRecordingDecisionDialog()
                         "rules:countdown-intro" -> beginRulesCountdownIfNeeded()
                     }
                 }
@@ -196,17 +225,32 @@ class DeteksiFragment : Fragment() {
         binding.btnSwitchCamera.setOnClickListener {
             if (::cameraManager.isInitialized) {
                 cameraManager.toggleCamera()
+                resetTrackingStateAfterCameraChange()
                 binding.overlayView.clear()
                 binding.overlayView.setFrontCamera(cameraManager.isFrontCamera())
             }
         }
+        // tvCnnIndicator disembunyikan — tidak ditampilkan ke user
+        binding.tvCnnIndicator.visibility = View.GONE
+        updateDetectorModeChip()
         checkCameraPermission()
     }
 
     private fun setupHeader() {
         binding.tvExerciseName.text = "Deteksi ${exerciseType.displayName}"
+    }
+
+    /** Update label chip statis — disimpan internal tapi view tetap GONE. */
+    private fun updateDetectorModeChip() {
+        if (!::poseDetectorRouter.isInitialized) return
+        val modeLabel = when (poseDetectorRouter.currentMode) {
+            PoseDetectorRouter.Mode.ML_KIT -> "ML Kit"
+            PoseDetectorRouter.Mode.YOLO   -> "YOLO Pose"
+        }
+        binding.tvCnnIndicator.text = modeLabel
         binding.tvCnnIndicator.visibility = View.GONE
     }
+
 
     private fun checkCameraPermission() {
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -216,14 +260,26 @@ class DeteksiFragment : Fragment() {
         }
     }
 
+    // ── Inisialisasi PoseDetectorRouter ──────────────────────────────────────
+
     private fun initComponents() {
-        // ML Kit Pose Detector
-        poseDetectorHelper = PoseDetectorHelper(
-            onResults = { poseResult -> processResults(poseResult) },
-            onError = { error -> 
+        // Baca mode yang dipilih user di halaman Detail Latihan
+        val savedMode = requireContext()
+            .getSharedPreferences("gymai_settings", android.content.Context.MODE_PRIVATE)
+            .getString("pose_detector_mode", "ML_KIT") ?: "ML_KIT"
+        val initialMode = when (savedMode) {
+            "YOLO"  -> PoseDetectorRouter.Mode.YOLO
+            else    -> PoseDetectorRouter.Mode.ML_KIT
+        }
+
+        poseDetectorRouter = PoseDetectorRouter(
+            context     = requireContext(),
+            initialMode = initialMode,
+            onResults   = { poseResult -> processResults(poseResult) },
+            onError     = { error ->
                 lastInferenceStartTime = 0L
                 requireActivity().runOnUiThread {
-                    Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(requireContext(), error, android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         )
@@ -268,13 +324,20 @@ class DeteksiFragment : Fragment() {
 
         if (exerciseType == ExerciseType.SHOULDER_PRESS) {
             shoulderPressRepSequenceBuffer = ShoulderPressRepSequenceBuffer()
-            if (shoulderPressSequenceClassifier == null) {
+            if (!ENABLE_SHOULDER_PRESS_CNN1D) {
+                shoulderPressSequenceClassifier = null
+                updateCnnDebugIndicator("CNN1D TEST: shoulder press nonaktif, mode rule-based")
+            } else if (shoulderPressSequenceClassifier == null) {
                 runCatching {
                     shoulderPressSequenceClassifier = ShoulderPressSequenceClassifier(requireContext())
+                    updateCnnDebugIndicator("CNN1D TEST: model shoulder press siap")
                 }.onFailure { error ->
                     Log.e(TAG, "Shoulder Press CNN classifier failed to load", error)
                     shoulderPressSequenceClassifier = null
+                    updateCnnDebugIndicator("CNN1D TEST: model shoulder press gagal dimuat")
                 }
+            } else {
+                updateCnnDebugIndicator("CNN1D TEST: model shoulder press siap")
             }
         } else {
             shoulderPressRepSequenceBuffer = null
@@ -299,8 +362,11 @@ class DeteksiFragment : Fragment() {
             }
         } else {
             squatRepSequenceBuffer = null
-            if (exerciseType != ExerciseType.BICEP_CURL) {
-                updateCnnDebugIndicator("CNN1D TEST: --")
+            when (exerciseType) {
+                ExerciseType.BICEP_CURL,
+                ExerciseType.LATERAL_RAISE,
+                ExerciseType.SHOULDER_PRESS -> Unit
+                ExerciseType.SQUAT -> Unit
             }
         }
     }
@@ -314,8 +380,13 @@ class DeteksiFragment : Fragment() {
         feedbackMap.clear()
         lastEvaluationDisplayPose = null
         evaluationVideoPath = null
+        resetBicepDisplayArmLock()
         hasRequestedEvaluationRecordingStart = false
         hasEvaluationRecordingFailed = false
+        shouldRecordEvaluationVideo = false
+        hasAnsweredEvaluationRecordingDecision = false
+        recordingDecisionDialog?.dismiss()
+        recordingDecisionDialog = null
         stopEvaluationFrameCapture()
         evaluationVideoRecorder = null
         recordingSourceRect = null
@@ -326,6 +397,7 @@ class DeteksiFragment : Fragment() {
         shoulderPressRepSequenceBuffer?.reset()
         squatRepSequenceBuffer?.reset()
         resetRepResultState()
+        clearMovementErrorDisplay()
         isRulesCountdownRunning = false
         isRulesCountdownIntroPending = false
         lastAnimatedRulesCountdownValue = -1
@@ -345,14 +417,23 @@ class DeteksiFragment : Fragment() {
                 }
             }
         )
-        cameraManager.setPerformanceMode(CameraManager.PerformanceMode.LIVE_PERFORMANCE)
+        // Set resolusi kamera sesuai mode detector:
+        // YOLO butuh 640×480 agar tidak upscaling → kualitas lebih baik
+        // ML Kit cukup 320×240
+        val cameraMode = if (::poseDetectorRouter.isInitialized &&
+            poseDetectorRouter.currentMode == PoseDetectorRouter.Mode.YOLO) {
+            CameraManager.PerformanceMode.YOLO_PERFORMANCE
+        } else {
+            CameraManager.PerformanceMode.LIVE_PERFORMANCE
+        }
+        cameraManager.setPerformanceMode(cameraMode)
         cameraManager.startCamera()
         binding.overlayView.setFrontCamera(cameraManager.isFrontCamera())
         binding.layoutInitializing.visibility = View.GONE
         resetLivePerformanceMetrics()
         binding.tvFps.text = "-- FPS"
-        if (exerciseType == ExerciseType.SQUAT) {
-            updateCnnDebugIndicator(
+        when (exerciseType) {
+            ExerciseType.SQUAT -> updateCnnDebugIndicator(
                 if (!ENABLE_SQUAT_CNN1D) {
                     "CNN1D TEST: squat nonaktif, mode rule-based"
                 } else if (squatSequenceClassifier != null) {
@@ -361,6 +442,16 @@ class DeteksiFragment : Fragment() {
                     "CNN1D TEST: model belum siap"
                 }
             )
+            ExerciseType.SHOULDER_PRESS -> updateCnnDebugIndicator(
+                if (!ENABLE_SHOULDER_PRESS_CNN1D) {
+                    "CNN1D TEST: shoulder press nonaktif, mode rule-based"
+                } else if (shoulderPressSequenceClassifier != null) {
+                    "CNN1D TEST: standby shoulder press"
+                } else {
+                    "CNN1D TEST: model shoulder press belum siap"
+                }
+            )
+            else -> Unit
         }
 
         if (ENABLE_RULES_OVERLAY) {
@@ -382,22 +473,31 @@ class DeteksiFragment : Fragment() {
     private fun processFrame(imageProxy: ImageProxy) {
         when (detectionState) {
             DetectionState.RULES_OVERLAY,
-            DetectionState.RULES_COUNTDOWN -> {
+            DetectionState.RULES_COUNTDOWN,
+            DetectionState.RECORDING_DECISION -> {
                 imageProxy.close()
             }
             DetectionState.EVALUATING -> {
                 val now = SystemClock.elapsedRealtime()
-                if (poseDetectorHelper.isBusy()) {
+                if (poseDetectorRouter.isBusy()) {
                     imageProxy.close()
                     return
                 }
-                if (now - lastInferenceRequestTime < currentInferenceIntervalMs) {
+                val inferenceIntervalMs = if (
+                    ::cameraManager.isInitialized &&
+                    cameraManager.isFrontCamera()
+                ) {
+                    currentInferenceIntervalMs.coerceAtMost(FRONT_CAMERA_MAX_LIVE_INFERENCE_INTERVAL_MS)
+                } else {
+                    currentInferenceIntervalMs
+                }
+                if (now - lastInferenceRequestTime < inferenceIntervalMs) {
                     imageProxy.close()
                     return
                 }
                 lastInferenceRequestTime = now
                 lastInferenceStartTime = now
-                poseDetectorHelper.detect(imageProxy)
+                poseDetectorRouter.detect(imageProxy)
             }
         }
     }
@@ -445,9 +545,72 @@ class DeteksiFragment : Fragment() {
         if (detectionState == DetectionState.EVALUATING) return
         cancelRulesCountdown()
         realtimeTtsManager?.stop()
+        if (!hasAnsweredEvaluationRecordingDecision) {
+            showEvaluationRecordingDecisionDialog()
+            return
+        }
         binding.layoutRulesOverlay.visibility = View.GONE
+        startEvaluationAfterRecordingDecision()
+    }
+
+    private fun showEvaluationRecordingDecisionDialog() {
+        if (!isAdded || _binding == null) return
+        if (recordingDecisionDialog?.isShowing == true) return
+
+        detectionState = DetectionState.RECORDING_DECISION
+        _binding?.tvRulesCountdown?.visibility = View.GONE
+        _binding?.tvRulesReadyHint?.text = "Pilih mode evaluasi sebelum mulai"
+        updateUi("BERSIAP", 0f, "Pilih apakah evaluasi akan direkam", true, null)
+
+        val dialogBinding = DialogRecordingDecisionBinding.inflate(layoutInflater)
+        MaterialSymbols.applyToTree(dialogBinding.root)
+
+        recordingDecisionDialog = MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogBinding.root)
+            .setCancelable(false)
+            .create()
+
+        recordingDecisionDialog?.window?.setBackgroundDrawable(
+            ColorDrawable(Color.TRANSPARENT)
+        )
+
+        dialogBinding.btnNoRecord.setOnClickListener {
+            recordingDecisionDialog?.dismiss()
+            handleEvaluationRecordingDecision(recordVideo = false)
+        }
+
+        dialogBinding.btnYesRecord.setOnClickListener {
+            recordingDecisionDialog?.dismiss()
+            handleEvaluationRecordingDecision(recordVideo = true)
+        }
+
+        recordingDecisionDialog?.show()
+    }
+
+    private fun handleEvaluationRecordingDecision(recordVideo: Boolean) {
+        hasAnsweredEvaluationRecordingDecision = true
+        shouldRecordEvaluationVideo = recordVideo
+        recordingDecisionDialog = null
+
+        if (ENABLE_RULES_OVERLAY && detectionState != DetectionState.EVALUATING) {
+            detectionState = DetectionState.RULES_OVERLAY
+            _binding?.layoutRulesOverlay?.visibility = View.VISIBLE
+            announceRulesCountdownIntroIfNeeded()
+        } else {
+            startEvaluationAfterRecordingDecision()
+        }
+    }
+
+    private fun startEvaluationAfterRecordingDecision() {
+        if (detectionState == DetectionState.EVALUATING) return
+        sessionStartTime = SystemClock.elapsedRealtime()
         detectionState = DetectionState.EVALUATING
-        updateUi("BERSIAP", 0f, "Mulai evaluasi gerakan", true, null)
+        val feedback = if (shouldRecordEvaluationVideo) {
+            "Mulai evaluasi gerakan dengan rekaman"
+        } else {
+            "Mulai evaluasi gerakan tanpa rekaman"
+        }
+        updateUi("BERSIAP", 0f, feedback, true, null)
         startEvaluationRecordingIfNeeded()
     }
 
@@ -455,16 +618,114 @@ class DeteksiFragment : Fragment() {
         if (!isDetecting) return
         recordProcessedFrame()
 
-        if (!pose.isValid()) {
+        val bicepPoseUsable = exerciseType == ExerciseType.BICEP_CURL && isBicepCurlPoseUsable(pose)
+        if (!pose.isValid() && !bicepPoseUsable) {
             missingFrameCount++
             if (exerciseType == ExerciseType.SQUAT) {
                 updateCnnDebugIndicator("CNN1D TEST: menunggu pose valid")
             }
-            // Update UI langsung tanpa buffer agar skeleton hilang seketika
+
+            if (missingFrameCount <= TRANSIENT_POSE_LOST_GRACE_FRAMES && lastEvaluationDisplayPose != null) {
+                updateUi(
+                    label = recordingLabel,
+                    confidence = 0f,
+                    feedback = recordingFeedback.ifBlank { getUndetectedFeedback(pose) },
+                    isCorrect = recordingIsCorrect,
+                    pose = lastEvaluationDisplayPose
+                )
+                return
+            }
+
             updateUi("HILANG", 0f, getUndetectedFeedback(pose), false, null)
+            resetBicepDisplayArmLock()
+            return
+        }
+
+        if (!isHumanPoseCandidate(pose) && !bicepPoseUsable) {
+            missingFrameCount++
+            lastEvaluationDisplayPose = null
+            lastKeypoints = null
+            stillnessCount = 0
+            engine.reset()
+            bicepRepSequenceBuffer?.reset()
+            resetBicepDisplayArmLock()
+            lateralRaiseRepSequenceBuffer?.reset()
+            shoulderPressRepSequenceBuffer?.reset()
+            squatRepSequenceBuffer?.reset()
+            if (exerciseType == ExerciseType.SQUAT) {
+                updateCnnDebugIndicator("CNN1D TEST: objek tidak terdeteksi")
+            }
+
+            val feedback = if (hasLikelyPartialHumanPose(pose)) {
+                "Pastikan seluruh tubuh terlihat di kamera"
+            } else {
+                "Objek tidak terdeteksi"
+            }
+            updateUi("HILANG", 0f, feedback, false, null)
             return
         }
         missingFrameCount = 0
+
+        if (exerciseType == ExerciseType.BICEP_CURL && !isBicepSideView(pose)) {
+            engine.reset()
+            bicepRepSequenceBuffer?.reset()
+            resetBicepDisplayArmLock()
+            lastKeypoints = null
+            stillnessCount = 0
+            repResultDisplayUntil = 0L
+            val displayPose = buildDisplayPose(pose)
+            lastEvaluationDisplayPose = displayPose
+            val issue = RuleResult(
+                isValid = false,
+                feedback = "Harus menghadap ke samping",
+                liveFeedback = "Harus menghadap ke samping",
+                repStatus = BicepRepStatus.IDLE,
+                repCompleted = false,
+                shouldCountRep = false,
+                isPositionIssue = true
+            )
+            val uiState = DetectionUiState(
+                label = "POSISI",
+                feedback = issue.liveFeedback,
+                isCorrect = false,
+                isPositionIssue = true
+            )
+            maybeSpeakRealtimeFeedback(issue, uiState)
+            updateUi(
+                uiState.label,
+                pose.score,
+                uiState.feedback,
+                uiState.isCorrect,
+                displayPose,
+                uiState.isPositionIssue
+            )
+            return
+        }
+
+        val squatMissingLegIssue = buildSquatMissingLegIssue(pose)
+        if (squatMissingLegIssue != null) {
+            engine.reset()
+            squatRepSequenceBuffer?.reset()
+            updateCnnDebugIndicator("CNN1D TEST: tubuh tidak lengkap")
+            val displayPose = buildDisplayPose(pose)
+            lastEvaluationDisplayPose = displayPose
+            val uiState = DetectionUiState(
+                label = "POSISI",
+                feedback = squatMissingLegIssue.liveFeedback,
+                isCorrect = false,
+                isPositionIssue = true
+            )
+            maybeSpeakRealtimeFeedback(squatMissingLegIssue, uiState)
+            updateUi(
+                uiState.label,
+                pose.score,
+                uiState.feedback,
+                uiState.isCorrect,
+                displayPose,
+                uiState.isPositionIssue
+            )
+            return
+        }
 
         // Motion detection
         val currentKeypoints = pose.rawKeypoints
@@ -530,48 +791,114 @@ class DeteksiFragment : Fragment() {
         if (exerciseType != ExerciseType.BICEP_CURL) {
             return pose
         }
+        if (!isBicepSideView(pose)) {
+            resetBicepDisplayArmLock()
+            return pose
+        }
 
         val raw = pose.rawKeypoints
         val smoothed = pose.keypoints
-        val leftArmScore =
-            raw[Keypoint.LEFT_SHOULDER].confidence +
-            raw[Keypoint.LEFT_ELBOW].confidence +
-            raw[Keypoint.LEFT_WRIST].confidence
-        val rightArmScore =
-            raw[Keypoint.RIGHT_SHOULDER].confidence +
-            raw[Keypoint.RIGHT_ELBOW].confidence +
-            raw[Keypoint.RIGHT_WRIST].confidence
-
-        val useLeftArm = leftArmScore >= rightArmScore
-        val activeArmIndexes = if (useLeftArm) {
-            setOf(Keypoint.LEFT_SHOULDER, Keypoint.LEFT_ELBOW, Keypoint.LEFT_WRIST)
-        } else {
-            setOf(Keypoint.RIGHT_SHOULDER, Keypoint.RIGHT_ELBOW, Keypoint.RIGHT_WRIST)
-        }
-
-        if (kotlin.math.abs(leftArmScore - rightArmScore) < 0.35f) {
-            val responsiveKeypoints = smoothed.mapIndexed { index, keypoint ->
-                if (index in activeArmIndexes) blendActiveArmDisplayKeypoint(raw[index], keypoint) else keypoint
-            }
-            return pose.copy(keypoints = responsiveKeypoints)
-        }
-
-        val hideLeftArm = rightArmScore > leftArmScore
-        val hiddenIndexes = if (hideLeftArm) {
-            setOf(Keypoint.LEFT_ELBOW, Keypoint.LEFT_WRIST)
-        } else {
-            setOf(Keypoint.RIGHT_ELBOW, Keypoint.RIGHT_WRIST)
-        }
+        val activeSide = resolveBicepDisplayArmSide(raw)
+        val activeArmIndexes = bicepArmIndexes(activeSide)
 
         val displayKeypoints = smoothed.mapIndexed { index, keypoint ->
-            when {
-                index in hiddenIndexes -> keypoint.copy(confidence = 0f)
-                index in activeArmIndexes -> blendActiveArmDisplayKeypoint(raw[index], keypoint)
-                else -> keypoint
+            if (index in activeArmIndexes) {
+                blendActiveArmDisplayKeypoint(raw[index], keypoint)
+            } else {
+                keypoint
             }
         }
 
         return pose.copy(keypoints = displayKeypoints)
+    }
+
+    private fun resolveBicepDisplayArmSide(raw: List<Keypoint>): BicepDisplayArmSide {
+        val leftScore = bicepArmDisplayScore(raw, BicepDisplayArmSide.LEFT)
+        val rightScore = bicepArmDisplayScore(raw, BicepDisplayArmSide.RIGHT)
+        val currentSide = bicepDisplayArmSide
+        val currentScore = when (currentSide) {
+            BicepDisplayArmSide.LEFT -> leftScore
+            BicepDisplayArmSide.RIGHT -> rightScore
+            null -> -1f
+        }
+
+        if (currentSide != null && currentScore >= BICEP_DISPLAY_ARM_LOST_SCORE) {
+            val challengerSide = if (currentSide == BicepDisplayArmSide.LEFT) BicepDisplayArmSide.RIGHT else BicepDisplayArmSide.LEFT
+            val challengerScore = if (challengerSide == BicepDisplayArmSide.LEFT) leftScore else rightScore
+            if (challengerScore > currentScore + BICEP_DISPLAY_ARM_SWITCH_MARGIN) {
+                confirmPendingBicepDisplayArm(challengerSide)
+            } else {
+                clearPendingBicepDisplayArm()
+            }
+            return bicepDisplayArmSide ?: currentSide
+        }
+
+        val preferredSide = if (rightScore > leftScore) BicepDisplayArmSide.RIGHT else BicepDisplayArmSide.LEFT
+        bicepDisplayArmSide = preferredSide
+        clearPendingBicepDisplayArm()
+        return preferredSide
+    }
+
+    private fun bicepArmDisplayScore(raw: List<Keypoint>, side: BicepDisplayArmSide): Float {
+        val indexes = bicepArmIndexes(side)
+        val shoulder = raw[indexes[0]]
+        val elbow = raw[indexes[1]]
+        val wrist = raw[indexes[2]]
+        val upperArmLength = kotlin.math.sqrt(
+            ((shoulder.x - elbow.x) * (shoulder.x - elbow.x)) +
+                ((shoulder.y - elbow.y) * (shoulder.y - elbow.y))
+        )
+        val forearmLength = kotlin.math.sqrt(
+            ((elbow.x - wrist.x) * (elbow.x - wrist.x)) +
+                ((elbow.y - wrist.y) * (elbow.y - wrist.y))
+        )
+        if (upperArmLength < 0.025f || forearmLength < 0.025f) return 0f
+        return (shoulder.confidence * 0.75f) + (elbow.confidence * 1.25f) + (wrist.confidence * 1.25f)
+    }
+
+    private fun confirmPendingBicepDisplayArm(side: BicepDisplayArmSide) {
+        if (pendingBicepDisplayArmSide == side) {
+            pendingBicepDisplayArmFrames++
+        } else {
+            pendingBicepDisplayArmSide = side
+            pendingBicepDisplayArmFrames = 1
+        }
+        if (pendingBicepDisplayArmFrames >= BICEP_DISPLAY_ARM_SWITCH_FRAMES) {
+            bicepDisplayArmSide = side
+            clearPendingBicepDisplayArm()
+        }
+    }
+
+    private fun clearPendingBicepDisplayArm() {
+        pendingBicepDisplayArmSide = null
+        pendingBicepDisplayArmFrames = 0
+    }
+
+    private fun resetBicepDisplayArmLock() {
+        bicepDisplayArmSide = null
+        clearPendingBicepDisplayArm()
+    }
+
+    private fun resetTrackingStateAfterCameraChange() {
+        lastEvaluationDisplayPose = null
+        lastKeypoints = null
+        stillnessCount = 0
+        repResultDisplayUntil = 0L
+        clearMovementErrorDisplay()
+        resetBicepDisplayArmLock()
+        engine.reset()
+        bicepRepSequenceBuffer?.reset()
+        lateralRaiseRepSequenceBuffer?.reset()
+        shoulderPressRepSequenceBuffer?.reset()
+        squatRepSequenceBuffer?.reset()
+    }
+
+    private fun bicepArmIndexes(side: BicepDisplayArmSide): List<Int> {
+        return if (side == BicepDisplayArmSide.LEFT) {
+            listOf(Keypoint.LEFT_SHOULDER, Keypoint.LEFT_ELBOW, Keypoint.LEFT_WRIST)
+        } else {
+            listOf(Keypoint.RIGHT_SHOULDER, Keypoint.RIGHT_ELBOW, Keypoint.RIGHT_WRIST)
+        }
     }
 
     private fun usesRepCompletionFlow(): Boolean {
@@ -585,7 +912,7 @@ class DeteksiFragment : Fragment() {
         val sequenceBuffer = bicepRepSequenceBuffer ?: return ruleResult
         val classifier = bicepSequenceClassifier ?: return ruleResult
 
-        if (!pose.isValid() || !isBicepSideView(pose)) {
+        if ((!pose.isValid() && !isBicepCurlPoseUsable(pose)) || !isBicepSideView(pose)) {
             sequenceBuffer.reset()
             return ruleResult
         }
@@ -713,26 +1040,36 @@ class DeteksiFragment : Fragment() {
 
     private fun mergeShoulderPressRuleAndClassifier(pose: PoseResult, ruleResult: RuleResult): RuleResult {
         val sequenceBuffer = shoulderPressRepSequenceBuffer ?: return ruleResult
-        val classifier = shoulderPressSequenceClassifier ?: return ruleResult
+        if (!ENABLE_SHOULDER_PRESS_CNN1D) {
+            return ruleResult
+        }
+        val classifier = shoulderPressSequenceClassifier ?: run {
+            updateCnnDebugIndicator("CNN1D TEST: model shoulder press tidak tersedia")
+            return ruleResult
+        }
 
         if (!pose.isValid()) {
             sequenceBuffer.reset()
+            updateCnnDebugIndicator("CNN1D TEST: shoulder press menunggu pose valid")
             return ruleResult
         }
 
         when (ruleResult.repStatus) {
             BicepRepStatus.IN_PROGRESS -> {
                 sequenceBuffer.append(pose.rawKeypoints)
+                updateCnnDebugIndicator("CNN1D TEST: buffering sequence shoulder press")
                 return ruleResult
             }
             BicepRepStatus.REP_BAD -> {
                 sequenceBuffer.reset()
+                updateCnnDebugIndicator("CNN1D TEST: rule shoulder press salah")
+                val feedback = buildShoulderPressModelFeedback(ruleResult.feedback, false)
                 return ruleResult.copy(
                     isValid = false,
-                    feedback = buildShoulderPressModelFeedback(ruleResult.feedback, false),
-                    liveFeedback = buildShoulderPressModelFeedback(ruleResult.feedback, false),
+                    feedback = feedback,
+                    liveFeedback = feedback,
                     repStatus = BicepRepStatus.REP_BAD,
-                    repCompleted = true,
+                    repCompleted = ruleResult.repCompleted,
                     shouldCountRep = false
                 )
             }
@@ -744,10 +1081,15 @@ class DeteksiFragment : Fragment() {
                 )
                 sequenceBuffer.reset()
                 if (sequence == null) {
+                    updateCnnDebugIndicator("CNN1D TEST: sequence shoulder press belum cukup")
                     return ruleResult
                 }
 
                 val classification = runCatching { classifier.classify(sequence) }.getOrNull() ?: return ruleResult
+                val cnnLabel = if (classification.isCorrect) "benar" else "salah"
+                updateCnnDebugIndicator(
+                    "CNN1D TEST: shoulder press $cnnLabel (${(classification.confidence * 100f).roundToInt()}%)"
+                )
                 return if (classification.isCorrect) {
                     ruleResult.copy(
                         isValid = true,
@@ -772,6 +1114,7 @@ class DeteksiFragment : Fragment() {
                 if (!sequenceBuffer.isEmpty()) {
                     sequenceBuffer.reset()
                 }
+                updateCnnDebugIndicator("CNN1D TEST: standby shoulder press")
                 return ruleResult
             }
         }
@@ -1052,7 +1395,8 @@ class DeteksiFragment : Fragment() {
             "Jaga siku tetap diam di samping tubuh" -> ruleFeedback
             "Angkat beban lebih tinggi hingga siku menekuk optimal" -> ruleFeedback
             "Jaga tubuh tetap tegak dan hindari ayunan badan" -> ruleFeedback
-            "Lengan tidak terdeteksi" -> ruleFeedback
+            "Lengan tidak terdeteksi" -> "Pastikan seluruh tubuh terlihat di kamera"
+            "Pastikan seluruh tubuh terlihat di kamera" -> ruleFeedback
             "Harus menghadap ke samping" -> ruleFeedback
             "Gerakan benar, siku tetap stabil dan fleksi siku optimal" -> "Gerakan kurang tepat, ulangi dengan kontrol"
             "Fleksi siku optimal dan tubuh stabil" -> "Ulangi bicep curl dengan siku tetap diam dan gerakan terkontrol"
@@ -1068,10 +1412,12 @@ class DeteksiFragment : Fragment() {
         return when (ruleFeedback.trim()) {
             "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil" -> ruleFeedback
             "Jangan luruskan siku sepenuhnya" -> ruleFeedback
+            "Jangan turunkan siku terlalu rendah, jaga setinggi bahu" -> ruleFeedback
             "Jaga dorongan kedua lengan tetap simetris" -> ruleFeedback
             "Tempo terlalu cepat, perlambat gerakan" -> ruleFeedback
             "Hadapkan tubuh ke depan kamera" -> ruleFeedback
-            "Pastikan kedua lengan terlihat jelas" -> ruleFeedback
+            "Pastikan kedua lengan terlihat jelas" -> "Pastikan seluruh tubuh terlihat di kamera"
+            "Pastikan seluruh tubuh terlihat di kamera" -> ruleFeedback
             "Letakkan dumbel di atas bahu" -> ruleFeedback
             "Dorongan hampir lurus ke atas dan postur stabil" -> "Ulangi shoulder press dengan dorongan lurus dan kedua lengan seimbang"
             else -> if (ruleFeedback.isNotBlank()) ruleFeedback else "Gerakan shoulder press kurang tepat, ulangi dengan kontrol"
@@ -1097,6 +1443,9 @@ class DeteksiFragment : Fragment() {
                 "Jaga kedua lengan tetap seimbang" -> ruleFeedback
                 "Jaga tubuh tetap tegak, jangan condong saat mengangkat" -> ruleFeedback
                 "Angkat lengan setinggi bahu dan hindari tubuh condong" -> ruleFeedback
+                "Pastikan kedua lengan terlihat jelas" -> "Pastikan seluruh tubuh terlihat di kamera"
+                "Lengan tidak terdeteksi" -> "Pastikan seluruh tubuh terlihat di kamera"
+                "Pastikan seluruh tubuh terlihat di kamera" -> ruleFeedback
                 "Lengan terangkat setinggi bahu dan tubuh stabil" -> "Ulangi lateral raise dengan tangan sejajar bahu dan tempo lebih terkontrol"
                 else -> "Ulangi lateral raise dengan tangan sejajar bahu dan tempo lebih terkontrol"
             }
@@ -1120,10 +1469,96 @@ class DeteksiFragment : Fragment() {
         val keypoints = pose.rawKeypoints
         val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
         val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
-        if (leftShoulder.confidence <= 0.5f || rightShoulder.confidence <= 0.5f) {
+        val leftShoulderVisible = leftShoulder.confidence > BICEP_SIDE_VIEW_CONFIDENCE_MIN
+        val rightShoulderVisible = rightShoulder.confidence > BICEP_SIDE_VIEW_CONFIDENCE_MIN
+        if (
+            leftShoulderVisible.xor(rightShoulderVisible) &&
+            isBicepCurlPoseUsable(pose)
+        ) {
+            return true
+        }
+        if (!leftShoulderVisible || !rightShoulderVisible) {
             return false
         }
-        return kotlin.math.abs(leftShoulder.x - rightShoulder.x) <= 0.15f
+
+        val shoulderWidth = kotlin.math.abs(leftShoulder.x - rightShoulder.x)
+        val bodyTop = minOf(leftShoulder.y, rightShoulder.y)
+        val lowerBodyPoints = listOf(
+            keypoints[Keypoint.LEFT_HIP],
+            keypoints[Keypoint.RIGHT_HIP],
+            keypoints[Keypoint.LEFT_KNEE],
+            keypoints[Keypoint.RIGHT_KNEE],
+            keypoints[Keypoint.LEFT_ANKLE],
+            keypoints[Keypoint.RIGHT_ANKLE]
+        ).filter { it.confidence > 0.35f }
+        val bodyHeight = lowerBodyPoints
+            .maxOfOrNull { it.y }
+            ?.minus(bodyTop)
+            ?.coerceAtLeast(0.01f)
+
+        if (bodyHeight == null || bodyHeight < 0.18f) {
+            return shoulderWidth <= BICEP_SIDE_VIEW_ABSOLUTE_SHOULDER_MAX
+        }
+
+        val shoulderRatio = shoulderWidth / bodyHeight
+        val leftHip = keypoints[Keypoint.LEFT_HIP]
+        val rightHip = keypoints[Keypoint.RIGHT_HIP]
+        val hipAccepted = if (
+            leftHip.confidence > BICEP_SIDE_VIEW_CONFIDENCE_MIN &&
+            rightHip.confidence > BICEP_SIDE_VIEW_CONFIDENCE_MIN
+        ) {
+            kotlin.math.abs(leftHip.x - rightHip.x) / bodyHeight <= BICEP_SIDE_VIEW_HIP_RATIO_MAX
+        } else {
+            true
+        }
+
+        return shoulderRatio <= BICEP_SIDE_VIEW_SHOULDER_RATIO_MAX && hipAccepted
+    }
+
+    private fun isBicepCurlPoseUsable(pose: PoseResult): Boolean {
+        val keypoints = pose.rawKeypoints
+        val leftArmVisible = isBicepArmUsable(
+            keypoints[Keypoint.LEFT_SHOULDER],
+            keypoints[Keypoint.LEFT_ELBOW],
+            keypoints[Keypoint.LEFT_WRIST]
+        )
+        val rightArmVisible = isBicepArmUsable(
+            keypoints[Keypoint.RIGHT_SHOULDER],
+            keypoints[Keypoint.RIGHT_ELBOW],
+            keypoints[Keypoint.RIGHT_WRIST]
+        )
+        if (!leftArmVisible && !rightArmVisible) return false
+
+        val visibleBodyPoints = listOf(
+            Keypoint.NOSE,
+            Keypoint.LEFT_SHOULDER,
+            Keypoint.RIGHT_SHOULDER,
+            Keypoint.LEFT_HIP,
+            Keypoint.RIGHT_HIP,
+            Keypoint.LEFT_KNEE,
+            Keypoint.RIGHT_KNEE,
+            Keypoint.LEFT_ANKLE,
+            Keypoint.RIGHT_ANKLE
+        ).count { index ->
+            keypoints.getOrNull(index)?.confidence ?: 0f > 0.35f
+        }
+
+        return visibleBodyPoints >= 4
+    }
+
+    private fun isBicepArmUsable(shoulder: Keypoint, elbow: Keypoint, wrist: Keypoint): Boolean {
+        if (shoulder.confidence < 0.35f || elbow.confidence < 0.42f || wrist.confidence < 0.42f) {
+            return false
+        }
+        val upperArmLength = kotlin.math.sqrt(
+            ((shoulder.x - elbow.x) * (shoulder.x - elbow.x)) +
+                ((shoulder.y - elbow.y) * (shoulder.y - elbow.y))
+        )
+        val forearmLength = kotlin.math.sqrt(
+            ((elbow.x - wrist.x) * (elbow.x - wrist.x)) +
+                ((elbow.y - wrist.y) * (elbow.y - wrist.y))
+        )
+        return upperArmLength >= 0.025f && forearmLength >= 0.025f
     }
 
     private fun isSquatSideView(pose: PoseResult): Boolean {
@@ -1134,25 +1569,53 @@ class DeteksiFragment : Fragment() {
         val keypoints = pose.rawKeypoints
         val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
         val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
+        val leftHip = keypoints[Keypoint.LEFT_HIP]
+        val rightHip = keypoints[Keypoint.RIGHT_HIP]
+        val leftKnee = keypoints[Keypoint.LEFT_KNEE]
+        val rightKnee = keypoints[Keypoint.RIGHT_KNEE]
+        val leftAnkle = keypoints[Keypoint.LEFT_ANKLE]
+        val rightAnkle = keypoints[Keypoint.RIGHT_ANKLE]
         if (
             leftShoulder.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
-            rightShoulder.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN
+            rightShoulder.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
+            leftHip.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
+            rightHip.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
+            leftKnee.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
+            rightKnee.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
+            leftAnkle.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN ||
+            rightAnkle.confidence <= SQUAT_BODY_SIDE_CONFIDENCE_MIN
         ) {
             return null
         }
 
         val shoulderWidth = kotlin.math.abs(leftShoulder.x - rightShoulder.x)
-        val nearSide = shoulderWidth <= SQUAT_SIDE_TO_DIAGONAL_SHOULDER_MAX
+        val hipWidth = kotlin.math.abs(leftHip.x - rightHip.x)
+        val kneeWidth = kotlin.math.abs(leftKnee.x - rightKnee.x)
+        val ankleWidth = kotlin.math.abs(leftAnkle.x - rightAnkle.x)
+        val averageWidth = (shoulderWidth + hipWidth + kneeWidth + ankleWidth) / 4f
+        val upperAverageWidth = (shoulderWidth + hipWidth) / 2f
+        val maxWidth = maxOf(shoulderWidth, hipWidth, kneeWidth, ankleWidth)
+        val minWidth = minOf(shoulderWidth, hipWidth, kneeWidth, ankleWidth)
+        val bodyTop = minOf(leftShoulder.y, rightShoulder.y)
+        val bodyBottom = maxOf(leftAnkle.y, rightAnkle.y)
+        val bodyHeight = (bodyBottom - bodyTop).coerceAtLeast(0.01f)
+        val shoulderRatio = shoulderWidth / bodyHeight
+        val hipRatio = hipWidth / bodyHeight
+        val upperAverageRatio = upperAverageWidth / bodyHeight
+        val nearSide =
+            shoulderRatio <= SQUAT_SIDE_SHOULDER_RATIO_MAX &&
+                hipRatio <= SQUAT_SIDE_HIP_RATIO_MAX &&
+                upperAverageRatio <= SQUAT_SIDE_UPPER_AVERAGE_RATIO_MAX
 
         return SquatSideViewMetrics(
             shoulderWidth = shoulderWidth,
-            hipWidth = 0f,
-            kneeWidth = 0f,
-            ankleWidth = 0f,
-            averageWidth = shoulderWidth,
-            widthToHeightRatio = 0f,
-            bodyHeight = 0f,
-            widthSpread = 0f,
+            hipWidth = hipWidth,
+            kneeWidth = kneeWidth,
+            ankleWidth = ankleWidth,
+            averageWidth = averageWidth,
+            widthToHeightRatio = upperAverageRatio,
+            bodyHeight = bodyHeight,
+            widthSpread = maxWidth - minWidth,
             isNearSide = nearSide,
             isFrontFacingRisk = !nearSide,
             isAccepted = nearSide
@@ -1167,19 +1630,136 @@ class DeteksiFragment : Fragment() {
         }
 
         return when (exerciseType) {
-            ExerciseType.BICEP_CURL -> {
-                val armVisible = hasVisibleArm(keypoints)
-                if (!armVisible) "Lengan tidak terdeteksi" else "Posisi tubuh belum lengkap"
-            }
-            ExerciseType.LATERAL_RAISE, ExerciseType.SHOULDER_PRESS -> {
-                val bothArmsVisible = hasVisibleUpperBody(keypoints)
-                if (!bothArmsVisible) "Lengan tidak terdeteksi" else "Posisi tubuh belum lengkap"
-            }
-            ExerciseType.SQUAT -> {
-                val legsVisible = hasVisibleLegs(keypoints)
-                if (!legsVisible) "Harus menghadap ke samping serong" else "Posisi tubuh belum lengkap"
-            }
+            ExerciseType.BICEP_CURL,
+            ExerciseType.LATERAL_RAISE,
+            ExerciseType.SHOULDER_PRESS,
+            ExerciseType.SQUAT -> "Pastikan seluruh tubuh terlihat di kamera"
         }
+    }
+
+    private fun isHumanPoseCandidate(pose: PoseResult): Boolean {
+        val keypoints = pose.rawKeypoints
+        // Threshold lebih rendah untuk YOLO (confidence YOLO secara alami lebih rendah dari ML Kit)
+        val isYolo = ::poseDetectorRouter.isInitialized &&
+            poseDetectorRouter.currentMode == PoseDetectorRouter.Mode.YOLO
+        val confThreshold   = if (isYolo) 0.30f else 0.55f
+        val shoulderThresh  = if (isYolo) 0.28f else 0.50f
+        val hipThresh       = if (isYolo) 0.25f else 0.45f
+
+        val confidentPoints = keypoints.filter { it.confidence >= confThreshold }
+        if (confidentPoints.size < 8) return false
+
+        val bounds = calculatePoseBounds(confidentPoints) ?: return false
+        val bodyWidth = bounds.width()
+        val bodyHeight = bounds.height()
+        if (bodyWidth < 0.08f || bodyHeight < 0.22f || bodyWidth * bodyHeight < 0.018f) {
+            return false
+        }
+
+        val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
+        val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
+        val leftHip = keypoints[Keypoint.LEFT_HIP]
+        val rightHip = keypoints[Keypoint.RIGHT_HIP]
+        val shouldersVisible = leftShoulder.confidence >= shoulderThresh && rightShoulder.confidence >= shoulderThresh
+        val hipsVisible = leftHip.confidence >= hipThresh && rightHip.confidence >= hipThresh
+        if (!shouldersVisible) return false
+
+        val torsoLooksValid = if (hipsVisible) {
+            val shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2f
+            val shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2f
+            val hipCenterX = (leftHip.x + rightHip.x) / 2f
+            val hipCenterY = (leftHip.y + rightHip.y) / 2f
+            val torsoLength = kotlin.math.sqrt(
+                ((hipCenterX - shoulderCenterX) * (hipCenterX - shoulderCenterX)) +
+                    ((hipCenterY - shoulderCenterY) * (hipCenterY - shoulderCenterY))
+            )
+            torsoLength >= 0.08f
+        } else {
+            bodyHeight >= 0.34f && hasVisibleArm(keypoints)
+        }
+
+        return torsoLooksValid && !isClusteredFalsePositive(keypoints, bounds)
+    }
+
+    private fun hasLikelyPartialHumanPose(pose: PoseResult): Boolean {
+        val keypoints = pose.rawKeypoints
+        val confidentPoints = keypoints.filter { it.confidence >= 0.45f }
+        val bounds = calculatePoseBounds(confidentPoints) ?: return false
+        val shouldersOrArmsVisible =
+            keypoints[Keypoint.LEFT_SHOULDER].confidence >= 0.45f ||
+                keypoints[Keypoint.RIGHT_SHOULDER].confidence >= 0.45f ||
+                hasVisibleArm(keypoints)
+        return shouldersOrArmsVisible && bounds.height() >= 0.3f && bounds.width() >= 0.08f
+    }
+
+    private fun calculatePoseBounds(points: List<Keypoint>): RectF? {
+        if (points.isEmpty()) return null
+        var minX = 1f
+        var maxX = 0f
+        var minY = 1f
+        var maxY = 0f
+        for (point in points) {
+            minX = minOf(minX, point.x)
+            maxX = maxOf(maxX, point.x)
+            minY = minOf(minY, point.y)
+            maxY = maxOf(maxY, point.y)
+        }
+        if (maxX <= minX || maxY <= minY) return null
+        return RectF(minX, minY, maxX, maxY)
+    }
+
+    private fun isClusteredFalsePositive(keypoints: List<Keypoint>, bounds: RectF): Boolean {
+        val bodyHeight = bounds.height()
+        val bodyWidth = bounds.width()
+        if (bodyHeight < 0.28f && bodyWidth < 0.18f) return true
+
+        val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
+        val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
+        val leftHip = keypoints[Keypoint.LEFT_HIP]
+        val rightHip = keypoints[Keypoint.RIGHT_HIP]
+        val shouldersVisible = leftShoulder.confidence >= 0.5f && rightShoulder.confidence >= 0.5f
+        val hipsVisible = leftHip.confidence >= 0.45f && rightHip.confidence >= 0.45f
+        if (!shouldersVisible || !hipsVisible) return false
+
+        val shoulderWidth = kotlin.math.abs(leftShoulder.x - rightShoulder.x)
+        val hipWidth = kotlin.math.abs(leftHip.x - rightHip.x)
+        val torsoVerticalSpan = kotlin.math.abs(((leftHip.y + rightHip.y) / 2f) - ((leftShoulder.y + rightShoulder.y) / 2f))
+        return torsoVerticalSpan < 0.06f && shoulderWidth < 0.06f && hipWidth < 0.06f
+    }
+
+    private fun buildSquatMissingLegIssue(pose: PoseResult): RuleResult? {
+        if (exerciseType != ExerciseType.SQUAT) return null
+        val keypoints = pose.rawKeypoints
+        val visiblePoints = keypoints.count { it.confidence > 0.3f }
+        if (visiblePoints == 0 || hasVisibleLegs(keypoints)) return null
+
+        val upperBodyVisible = hasVisibleSquatUpperBodySignal(keypoints)
+        if (!upperBodyVisible) return null
+
+        return RuleResult(
+            isValid = false,
+            feedback = "Pastikan seluruh tubuh terlihat di kamera",
+            liveFeedback = "Pastikan seluruh tubuh terlihat di kamera",
+            repStatus = BicepRepStatus.IDLE,
+            repCompleted = false,
+            shouldCountRep = false,
+            isPositionIssue = true
+        )
+    }
+
+    private fun hasVisibleSquatUpperBodySignal(keypoints: List<Keypoint>): Boolean {
+        val upperIndexes = listOf(
+            Keypoint.NOSE,
+            Keypoint.LEFT_SHOULDER,
+            Keypoint.RIGHT_SHOULDER,
+            Keypoint.LEFT_ELBOW,
+            Keypoint.RIGHT_ELBOW,
+            Keypoint.LEFT_WRIST,
+            Keypoint.RIGHT_WRIST
+        )
+        return upperIndexes.count { index ->
+            keypoints.getOrNull(index)?.confidence ?: 0f > 0.3f
+        } >= 3
     }
 
     private fun hasVisibleArm(keypoints: List<Keypoint>): Boolean {
@@ -1232,6 +1812,33 @@ class DeteksiFragment : Fragment() {
     }
 
     private fun buildRepUiState(result: RuleResult): DetectionUiState {
+        val now = SystemClock.elapsedRealtime()
+
+        if (isShoulderPressResetPosition(result)) {
+            resetRepResultState()
+            return DetectionUiState(
+                label = "POSISI",
+                feedback = result.liveFeedback,
+                isCorrect = false,
+                isPositionIssue = true
+            )
+        }
+
+        if (now < repResultDisplayUntil) {
+            return DetectionUiState(
+                label = repResultLabel,
+                feedback = repResultFeedback,
+                isCorrect = repResultCorrect
+            )
+        }
+        if (now < movementErrorDisplayUntil) {
+            return DetectionUiState(
+                label = "SALAH",
+                feedback = movementErrorFeedback,
+                isCorrect = false
+            )
+        }
+
         // Cek posisi/orientasi dulu — langsung return tanpa masuk logika rep
         if (result.isPositionIssue) {
             return DetectionUiState(
@@ -1242,7 +1849,19 @@ class DeteksiFragment : Fragment() {
             )
         }
 
-        val now = SystemClock.elapsedRealtime()
+        val liveMovementError = movementErrorFeedbackOrNull(result)
+        if (liveMovementError != null) {
+            movementErrorFeedback = liveMovementError
+            movementErrorDisplayUntil = now + MOVEMENT_ERROR_DISPLAY_MS
+            if (!result.repCompleted) {
+                return DetectionUiState(
+                    label = "SALAH",
+                    feedback = liveMovementError,
+                    isCorrect = false
+                )
+            }
+        }
+
         val squatMotionFallback =
             exerciseType == ExerciseType.SQUAT &&
                 result.repStatus == BicepRepStatus.IDLE &&
@@ -1254,22 +1873,13 @@ class DeteksiFragment : Fragment() {
                 result.primaryMetric >= 20f &&
                 result.primaryMetric < 110f
 
-        // Tampilkan hasil rep selama periode display. Jangan timpa BENAR/SALAH
-        // yang baru muncul oleh jitter frame berikutnya.
-        if (now < repResultDisplayUntil) {
-            return DetectionUiState(
-                label = repResultLabel,
-                feedback = repResultFeedback,
-                isCorrect = repResultCorrect
-            )
-        }
-
         // Simpan hasil rep (BENAR/SALAH) untuk ditampilkan selama REP_RESULT_DISPLAY_MS
-        if (result.repStatus == BicepRepStatus.REP_GOOD || result.repStatus == BicepRepStatus.REP_BAD) {
+        if (result.repCompleted && (result.repStatus == BicepRepStatus.REP_GOOD || result.repStatus == BicepRepStatus.REP_BAD)) {
             repResultDisplayUntil = now + REP_RESULT_DISPLAY_MS
             repResultLabel = if (result.repStatus == BicepRepStatus.REP_GOOD) "BENAR" else "SALAH"
             repResultFeedback = result.feedback
             repResultCorrect = result.repStatus == BicepRepStatus.REP_GOOD
+            clearMovementErrorDisplay()
         }
 
         // SQUAT: saat gerakan berlangsung, tampilkan coaching netral
@@ -1356,6 +1966,44 @@ class DeteksiFragment : Fragment() {
         repResultLabel = "SIAP"
         repResultFeedback = "Siap untuk repetisi berikutnya"
         repResultCorrect = true
+        clearMovementErrorDisplay()
+    }
+
+    private fun clearMovementErrorDisplay() {
+        movementErrorDisplayUntil = 0L
+        movementErrorFeedback = ""
+    }
+
+    private fun movementErrorFeedbackOrNull(result: RuleResult): String? {
+        if (result.isPositionIssue) return null
+        if (result.repCompleted && result.shouldCountRep) return null
+
+        val feedback = result.liveFeedback.ifBlank { result.feedback }.trim()
+        if (feedback.isBlank()) return null
+
+        val isExplicitBadRep = result.repStatus == BicepRepStatus.REP_BAD
+        val isKnownMovementError = when (feedback) {
+            "Tempo terlalu cepat, perlambat gerakan",
+            "Jangan turunkan siku terlalu rendah, jaga setinggi bahu",
+            "Jangan luruskan siku sepenuhnya",
+            "Jaga dorongan kedua lengan tetap simetris",
+            "Jaga siku tetap diam di samping tubuh",
+            "Jaga tubuh tetap tegak dan hindari ayunan badan",
+            "Jangan angkat tangan lebih tinggi dari bahu",
+            "Pimpin gerakan dengan siku, jangan pergelangan tangan",
+            "Jangan angkat bahu saat mengangkat beban",
+            "Jaga kedua lengan tetap seimbang",
+            "Badan terlalu membungkuk, jaga badan tetap tegak" -> true
+            else -> feedback.startsWith("Gerakan salah") || feedback.startsWith("Ulangi")
+        }
+
+        return if (isExplicitBadRep || isKnownMovementError) feedback else null
+    }
+
+    private fun isShoulderPressResetPosition(result: RuleResult): Boolean {
+        return exerciseType == ExerciseType.SHOULDER_PRESS &&
+            result.isPositionIssue &&
+            result.liveFeedback.trim() == "Letakkan dumbel di atas bahu"
     }
 
     private fun updateUi(label: String, confidence: Float, feedback: String, isCorrect: Boolean, pose: PoseResult?, isPositionIssue: Boolean = false) {
@@ -1386,7 +2034,7 @@ class DeteksiFragment : Fragment() {
 
             b.tvReps.text = repCounter.getRepCount().toString()
             b.tvFeedback.text = feedback
-            b.tvCnnIndicator.text = cnnDebugIndicatorText
+            // tvCnnIndicator disembunyikan — tidak di-update lagi
             b.overlayView.updatePose(pose, isCorrect)
         }
     }
@@ -1539,6 +2187,24 @@ class DeteksiFragment : Fragment() {
         // Saat gerakan berlangsung (IN_PROGRESS): tidak ada TTS evaluatif
         if (usesRepCompletionFlow() && result.repStatus == BicepRepStatus.IN_PROGRESS) return
 
+        if (
+            exerciseType == ExerciseType.SHOULDER_PRESS &&
+            result.repStatus == BicepRepStatus.REP_BAD &&
+            !result.repCompleted &&
+            !result.isPositionIssue
+        ) {
+            val speech = mapFeedbackToSpeech(result.feedback)
+                ?: mapFeedbackToSpeech(result.liveFeedback)
+                ?: return
+            realtimeTtsManager?.speakIfEligible(
+                message = speech,
+                utteranceKey = "live_error:${normalizeSpeechKey(speech)}",
+                cooldownMs = 9_000L,
+                minIntervalMs = 2_500L
+            )
+            return
+        }
+
         // Kondisi HILANG / pose tidak valid: tetap berikan panduan posisi
         val speech = when {
             uiState.label == "HILANG" -> mapFeedbackToSpeech(uiState.feedback)
@@ -1556,7 +2222,7 @@ class DeteksiFragment : Fragment() {
 
     private fun mapFeedbackToSpeech(feedback: String): String? {
         return when (feedback.trim()) {
-            "Lengan tidak terdeteksi" -> "Lengan tidak terdeteksi"
+            "Lengan tidak terdeteksi" -> "Pastikan seluruh tubuh terlihat di kamera"
             "Objek tidak terdeteksi" -> "Objek tidak terdeteksi"
             "Harus menghadap ke samping" -> "Harus menghadap ke samping"
             "Harus menghadap ke samping serong" -> "Harus menghadap ke samping serong"
@@ -1572,8 +2238,10 @@ class DeteksiFragment : Fragment() {
             "Dorong beban lurus ke atas sampai tangan hampir lurus" -> "Dorong beban lurus ke atas sampai tangan hampir lurus"
             "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil" -> "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil"
             "Jangan luruskan siku sepenuhnya" -> "Jangan luruskan siku sepenuhnya"
-            "Pastikan kedua lengan terlihat jelas" -> "Pastikan kedua lengan terlihat jelas"
+            "Jangan turunkan siku terlalu rendah, jaga setinggi bahu" -> "Jangan turunkan siku terlalu rendah, jaga setinggi bahu"
+            "Pastikan kedua lengan terlihat jelas" -> "Pastikan seluruh tubuh terlihat di kamera"
             "Letakkan dumbel di atas bahu" -> "Letakkan dumbel di atas bahu"
+            "Dumbel di atas bahu, siap dorong ke atas" -> "Dumbel di atas bahu, siap dorong ke atas"
             "Angkat beban sedikit lebih tinggi" -> "Angkat beban sedikit lebih tinggi"
             "Jaga siku tetap sedikit menekuk" -> "Tangan harus sedikit menekuk"
             "Angkat lengan sampai sejajar bahu" -> "Angkat lengan sampai sejajar bahu"
@@ -1598,13 +2266,14 @@ class DeteksiFragment : Fragment() {
             "Ulangi bicep curl dengan siku tetap diam dan gerakan terkontrol" -> "Ulangi bicep curl dengan siku tetap diam dan gerakan terkontrol"
             "Ulangi shoulder press dengan dorongan lurus dan kedua lengan seimbang" -> "Ulangi shoulder press dengan dorongan lurus dan kedua lengan seimbang"
             "Ulangi squat dengan pinggul lebih stabil dan badan tetap tegak" -> "Ulangi squat dengan pinggul lebih stabil dan badan tetap tegak"
-            "Kaki tidak terdeteksi" -> "Kaki tidak terdeteksi"
+            "Kaki tidak terdeteksi" -> "Pastikan seluruh tubuh terlihat di kamera"
             "Turunkan pinggul lebih dalam dan jaga tubuh tetap stabil" -> "Turunkan pinggul lebih dalam dan jaga tubuh tetap stabil"
             "Turunkan pinggul lebih dalam" -> "Turunkan pinggul lebih dalam"
             "Jaga badan tetap tegak dan stabil" -> "Jaga badan tetap tegak dan stabil"
             "Badan terlalu membungkuk, jaga badan tetap tegak" -> "Badan terlalu membungkuk, jaga badan tetap tegak"
-            "Posisi tubuh belum lengkap" -> "Posisi tubuh belum lengkap"
-            "Pastikan tubuh terlihat jelas di kamera" -> "Pastikan tubuh terlihat jelas di kamera"
+            "Posisi tubuh belum lengkap" -> "Pastikan seluruh tubuh terlihat di kamera"
+            "Pastikan tubuh terlihat jelas di kamera" -> "Pastikan seluruh tubuh terlihat di kamera"
+            "Pastikan seluruh tubuh terlihat di kamera" -> "Pastikan seluruh tubuh terlihat di kamera"
             else -> null
         }
     }
@@ -1621,7 +2290,9 @@ class DeteksiFragment : Fragment() {
             "Dorong beban lurus ke atas sampai tangan hampir lurus" -> feedback
             "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil" -> feedback
             "Jangan luruskan siku sepenuhnya" -> feedback
+            "Jangan turunkan siku terlalu rendah, jaga setinggi bahu" -> feedback
             "Letakkan dumbel di atas bahu" -> feedback
+            "Dumbel di atas bahu, siap dorong ke atas" -> feedback
             "Angkat beban sedikit lebih tinggi" -> feedback
             "Jaga siku tetap sedikit menekuk" -> feedback
             "Angkat lengan sampai sejajar bahu" -> feedback
@@ -1657,6 +2328,11 @@ class DeteksiFragment : Fragment() {
         val isPositionIssue: Boolean = false  // true → label "POSISI" oranye
     )
 
+    private enum class BicepDisplayArmSide {
+        LEFT,
+        RIGHT
+    }
+
     private data class SquatSideViewMetrics(
         val shoulderWidth: Float,
         val hipWidth: Float,
@@ -1677,7 +2353,7 @@ class DeteksiFragment : Fragment() {
         isDetecting = false
         isSavingSession = true
         _binding?.btnStop?.isEnabled = false
-        if (::poseDetectorHelper.isInitialized) poseDetectorHelper.close()
+        if (::poseDetectorRouter.isInitialized) poseDetectorRouter.close()
 
         val duration = (SystemClock.elapsedRealtime() - sessionStartTime) / 1000
         val avgConf = if (confidenceCount > 0) confidenceSum / confidenceCount else 0f
@@ -1845,7 +2521,9 @@ class DeteksiFragment : Fragment() {
         isDetecting = false
         stopEvaluationFrameCapture()
         cancelRulesCountdown()
-        if (::poseDetectorHelper.isInitialized) poseDetectorHelper.close()
+        recordingDecisionDialog?.dismiss()
+        recordingDecisionDialog = null
+        if (::poseDetectorRouter.isInitialized) poseDetectorRouter.close()
         if (!isSavingSession) {
             runCatching { evaluationVideoRecorder?.discard() }
         }
@@ -1897,9 +2575,13 @@ class DeteksiFragment : Fragment() {
             return
         }
         if (detectionState != DetectionState.EVALUATING) {
+            recordingDecisionDialog?.dismiss()
+            recordingDecisionDialog = null
             cancelRulesCountdown()
             detectionState = DetectionState.RULES_OVERLAY
             hasSpokenRulesGuidance = false
+            hasAnsweredEvaluationRecordingDecision = false
+            shouldRecordEvaluationVideo = false
             _binding?.tvRulesCountdown?.visibility = View.GONE
             _binding?.tvRulesReadyHint?.text = "Panduan evaluasi akan diputar ulang saat halaman dibuka kembali"
         }
@@ -1908,6 +2590,14 @@ class DeteksiFragment : Fragment() {
 
     private fun startEvaluationRecordingIfNeeded() {
         if (hasRequestedEvaluationRecordingStart || hasEvaluationRecordingFailed) return
+        if (!ENABLE_EVALUATION_VIDEO_RECORDING || !shouldRecordEvaluationVideo) {
+            hasRequestedEvaluationRecordingStart = true
+            evaluationVideoRecorder = null
+            evaluationVideoPath = null
+            recordingSourceRect = null
+            stopEvaluationFrameCapture()
+            return
+        }
 
         val externalDir = requireContext().getExternalFilesDir("evaluations")
         val baseDir = externalDir ?: File(requireContext().filesDir, "evaluations")
@@ -1946,6 +2636,14 @@ class DeteksiFragment : Fragment() {
     }
 
     private suspend fun stopEvaluationRecordingAndFinalize(): String? {
+        if (!ENABLE_EVALUATION_VIDEO_RECORDING || !shouldRecordEvaluationVideo) {
+            stopEvaluationFrameCapture()
+            evaluationVideoRecorder = null
+            recordingSourceRect = null
+            evaluationVideoPath = null
+            return null
+        }
+
         stopEvaluationFrameCapture()
         val recorder = evaluationVideoRecorder
         evaluationVideoRecorder = null
@@ -2005,20 +2703,29 @@ class DeteksiFragment : Fragment() {
         val repSnapshot = repCounter.getRepCount()
         val isFront = cameraManager.isFrontCamera()
 
-        recordingDrawExecutor.execute {
-            drawCompositeAndEncode(
-                composite,
-                previewBitmap,
-                sourceRect,
-                poseSnapshot,
-                labelSnapshot,
-                feedbackSnapshot,
-                isCorrectSnapshot,
-                repSnapshot,
-                isFront,
-                recorder
-            )
+        if (!recordingDrawInFlight.compareAndSet(false, true)) {
             previewBitmap.recycle()
+            return
+        }
+
+        recordingDrawExecutor.execute {
+            try {
+                drawCompositeAndEncode(
+                    composite,
+                    previewBitmap,
+                    sourceRect,
+                    poseSnapshot,
+                    labelSnapshot,
+                    feedbackSnapshot,
+                    isCorrectSnapshot,
+                    repSnapshot,
+                    isFront,
+                    recorder
+                )
+            } finally {
+                previewBitmap.recycle()
+                recordingDrawInFlight.set(false)
+            }
         }
     }
 

@@ -58,10 +58,15 @@ class SquatRuleEngine(
 
         val metrics = extractMetrics(pose.rawKeypoints) ?: run {
             cancelCycle()
+            val feedback = if (hasUpperBodyWithoutLegs(pose.rawKeypoints)) {
+                "Pastikan seluruh tubuh terlihat di kamera"
+            } else {
+                "Harus menghadap ke samping serong"
+            }
             return RuleResult(
                 isValid = false,
-                feedback = "Harus menghadap ke samping serong",
-                liveFeedback = "Harus menghadap ke samping serong",
+                feedback = feedback,
+                liveFeedback = feedback,
                 repStatus = currentRepStatus(),
                 isPositionIssue = true
             )
@@ -262,6 +267,36 @@ class SquatRuleEngine(
             avgHipAngle = (leftHipAngle + rightHipAngle) / 2f,
             torsoAngle = torsoAngle
         )
+    }
+
+    private fun hasUpperBodyWithoutLegs(keypoints: List<Keypoint>): Boolean {
+        val upperIndexes = listOf(
+            Keypoint.NOSE,
+            Keypoint.LEFT_SHOULDER,
+            Keypoint.RIGHT_SHOULDER,
+            Keypoint.LEFT_ELBOW,
+            Keypoint.RIGHT_ELBOW,
+            Keypoint.LEFT_WRIST,
+            Keypoint.RIGHT_WRIST
+        )
+        val visibleUpperBodyPoints = upperIndexes.count { index ->
+            (keypoints.getOrNull(index)?.confidence ?: 0f) > MIN_CONF
+        }
+        return visibleUpperBodyPoints >= 3 && !hasVisibleLegs(keypoints)
+    }
+
+    private fun hasVisibleLegs(keypoints: List<Keypoint>): Boolean {
+        val leftLegVisible =
+            (keypoints.getOrNull(Keypoint.LEFT_HIP)?.confidence ?: 0f) > MIN_CONF &&
+                (keypoints.getOrNull(Keypoint.LEFT_KNEE)?.confidence ?: 0f) > MIN_CONF &&
+                (keypoints.getOrNull(Keypoint.LEFT_ANKLE)?.confidence ?: 0f) > MIN_CONF
+
+        val rightLegVisible =
+            (keypoints.getOrNull(Keypoint.RIGHT_HIP)?.confidence ?: 0f) > MIN_CONF &&
+                (keypoints.getOrNull(Keypoint.RIGHT_KNEE)?.confidence ?: 0f) > MIN_CONF &&
+                (keypoints.getOrNull(Keypoint.RIGHT_ANKLE)?.confidence ?: 0f) > MIN_CONF
+
+        return leftLegVisible || rightLegVisible
     }
 
     private fun updateReadyState(metrics: RepMetrics) {
