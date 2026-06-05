@@ -11,7 +11,8 @@ class SquatRuleEngine(
 ) : ExerciseRuleEngine {
 
     companion object {
-        private const val MIN_CONF = 0.45f
+        private const val MIN_CONF = 0.35f          // Diturunkan agar toleran di posisi squat bawah
+        private const val MIN_CONF_STRICT = 0.45f   // Digunakan hanya untuk keypoint tubuh atas
         private const val READY_FRAMES = 2
         private const val STANDING_KNEE_MIN = 150f
         private const val STANDING_HIP_MIN = 135f
@@ -30,6 +31,9 @@ class SquatRuleEngine(
         private const val MIN_FULL_REP_MS = 700L
         private const val VIOLATION_THRESHOLD_MS = 450L
         private const val VIOLATION_RATIO_THRESHOLD = 0.45f
+        // Lebar bahu minimal (rasio frame) yang menandakan orang menghadap ke depan kamera
+        // Saat menghadap samping, lebar bahu akan lebih kecil dari threshold ini
+        private const val FRONT_FACING_SHOULDER_MIN = 0.15f
     }
 
     private var cycleActive = false
@@ -43,6 +47,7 @@ class SquatRuleEngine(
     private var torsoViolationMs = 0L
     private var torsoBentLocked = false
     private var minHipAngleInCycle = 180f
+    private var lastValidMetrics: RepMetrics? = null  // Cache metrics terakhir yang valid
 
     override fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
@@ -56,20 +61,42 @@ class SquatRuleEngine(
             )
         }
 
-        val metrics = extractMetrics(pose.rawKeypoints) ?: run {
-            cancelCycle()
-            val feedback = if (hasUpperBodyWithoutLegs(pose.rawKeypoints)) {
-                "Pastikan seluruh tubuh terlihat di kamera"
+        val rawMetrics = extractMetrics(pose.rawKeypoints)
+        val metrics: RepMetrics
+
+        if (rawMetrics == null) {
+            // Saat cycle squat aktif ATAU pernah ada metrics valid sebelumnya,
+            // gunakan cache untuk menghindari pesan orientasi yang salah di posisi squat dalam.
+            val cached = lastValidMetrics
+            if (cached != null) {
+                // Ada data valid sebelumnya → gunakan sebagai fallback
+                metrics = cached
             } else {
-                "Harus menghadap ke samping serong"
+                // Benar-benar belum ada data valid sama sekali
+                cancelCycle()
+                val feedback = when {
+                    hasUpperBodyWithoutLegs(pose.rawKeypoints) ->
+                        // Terlihat tubuh atas tapi kaki tidak → jauh dari kamera
+                        "Pastikan seluruh tubuh terlihat di kamera"
+                    isClearlyFacingFront(pose.rawKeypoints) ->
+                        // Terbukti positif menghadap depan (bahu lebar)
+                        "Harus menghadap ke samping serong"
+                    else ->
+                        // Tidak bisa membuktikan orientasi → pesan generik
+                        // (bisa jadi squat dalam dengan confidence rendah, bukan salah orientasi)
+                        "Pastikan seluruh tubuh terlihat di kamera"
+                }
+                return RuleResult(
+                    isValid = false,
+                    feedback = feedback,
+                    liveFeedback = feedback,
+                    repStatus = currentRepStatus(),
+                    isPositionIssue = true
+                )
             }
-            return RuleResult(
-                isValid = false,
-                feedback = feedback,
-                liveFeedback = feedback,
-                repStatus = currentRepStatus(),
-                isPositionIssue = true
-            )
+        } else {
+            metrics = rawMetrics
+            lastValidMetrics = rawMetrics   // Simpan metrics valid terakhir
         }
 
         val now = nowProvider()
@@ -196,6 +223,7 @@ class SquatRuleEngine(
         torsoViolationMs = 0L
         torsoBentLocked = false
         minHipAngleInCycle = 180f
+        lastValidMetrics = null             // Reset cache metrics
     }
 
     private fun extractMetrics(keypoints: List<Keypoint>): RepMetrics? {
@@ -208,28 +236,36 @@ class SquatRuleEngine(
         val leftShoulder = keypoints[Keypoint.LEFT_SHOULDER]
         val rightShoulder = keypoints[Keypoint.RIGHT_SHOULDER]
 
+        // Shoulder menggunakan threshold lebih ketat (posisi bahu selalu terlihat jelas)
+        // Hip, knee, ankle menggunakan threshold lebih rendah karena sendi tertekuk saat squat dalam
+        if (
+            leftShoulder.confidence <= MIN_CONF_STRICT ||
+            rightShoulder.confidence <= MIN_CONF_STRICT
+        ) {
+            return null
+        }
         if (
             leftHip.confidence <= MIN_CONF ||
             rightHip.confidence <= MIN_CONF ||
             leftKnee.confidence <= MIN_CONF ||
             rightKnee.confidence <= MIN_CONF ||
             leftAnkle.confidence <= MIN_CONF ||
-            rightAnkle.confidence <= MIN_CONF ||
-            leftShoulder.confidence <= MIN_CONF ||
-            rightShoulder.confidence <= MIN_CONF
+            rightAnkle.confidence <= MIN_CONF
         ) {
             return null
         }
 
+        // Segment length check: dikurangi threshold untuk memungkinkan posisi squat dalam
+        // dimana kaki tampak lebih pendek dari sudut kamera samping
         val leftUpperLeg = AngleUtils.distance(leftHip.x, leftHip.y, leftKnee.x, leftKnee.y)
         val rightUpperLeg = AngleUtils.distance(rightHip.x, rightHip.y, rightKnee.x, rightKnee.y)
         val leftLowerLeg = AngleUtils.distance(leftKnee.x, leftKnee.y, leftAnkle.x, leftAnkle.y)
         val rightLowerLeg = AngleUtils.distance(rightKnee.x, rightKnee.y, rightAnkle.x, rightAnkle.y)
         if (
-            leftUpperLeg < 0.03f ||
-            rightUpperLeg < 0.03f ||
-            leftLowerLeg < 0.03f ||
-            rightLowerLeg < 0.03f
+            leftUpperLeg < 0.02f ||
+            rightUpperLeg < 0.02f ||
+            leftLowerLeg < 0.02f ||
+            rightLowerLeg < 0.02f
         ) {
             return null
         }
@@ -283,6 +319,27 @@ class SquatRuleEngine(
             (keypoints.getOrNull(index)?.confidence ?: 0f) > MIN_CONF
         }
         return visibleUpperBodyPoints >= 3 && !hasVisibleLegs(keypoints)
+    }
+
+    /**
+     * Mendeteksi secara positif apakah orang menghadap depan kamera.
+     * Mengembalikan TRUE hanya jika:
+     *   1. Kedua bahu terdeteksi dengan confidence tinggi
+     *   2. Lebar bahu (horizontal) cukup besar — indikasi pandang depan
+     *
+     * Saat menghadap samping (serong): bahu tampak sempit → false → tidak tampilkan error orientasi.
+     * Ini mencegah false positive "Harus menghadap ke samping serong" saat squat dalam dari sudut samping.
+     */
+    private fun isClearlyFacingFront(keypoints: List<Keypoint>): Boolean {
+        val leftShoulder = keypoints.getOrNull(Keypoint.LEFT_SHOULDER) ?: return false
+        val rightShoulder = keypoints.getOrNull(Keypoint.RIGHT_SHOULDER) ?: return false
+        // Kedua bahu harus terdeteksi dengan confidence cukup baik
+        if (leftShoulder.confidence < MIN_CONF_STRICT || rightShoulder.confidence < MIN_CONF_STRICT) {
+            return false
+        }
+        // Lebar bahu horizontal — menghadap depan akan lebih lebar dari threshold
+        val shoulderWidth = abs(leftShoulder.x - rightShoulder.x)
+        return shoulderWidth > FRONT_FACING_SHOULDER_MIN
     }
 
     private fun hasVisibleLegs(keypoints: List<Keypoint>): Boolean {

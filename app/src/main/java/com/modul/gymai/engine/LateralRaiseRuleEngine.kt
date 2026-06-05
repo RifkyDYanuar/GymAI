@@ -14,6 +14,11 @@ class LateralRaiseRuleEngine(
         private const val MIN_CONF = 0.35f
         private const val HIP_MIN_CONF = 0.28f
         private const val FRONT_VIEW_SHOULDER_DISTANCE_MIN = 0.10f
+        // Setelah latch terkonfirmasi, hanya lepas jika bahu benar-benar sempit
+        // (indikasi tubuh memang berpaling, bukan variasi pose lateral raise)
+        private const val FRONT_VIEW_STRICT_SHOULDER_MIN = 0.06f
+        // Jumlah frame berturut-turut untuk mengkonfirmasi "menghadap depan"
+        private const val FRONT_VIEW_CONFIRM_FRAMES = 3
         private const val READY_FRAMES = 3
         private const val READY_LIFT_MAX = 28f
         private const val START_LIFT_MIN = 28f
@@ -33,8 +38,8 @@ class LateralRaiseRuleEngine(
         private const val SCAPTION_ELBOW_OUTER_RATIO = 0.58f
         private const val ACTIVE_LIFT_MIN = 42f
         private const val RETURN_LIFT_FALLBACK_MAX = ACTIVE_LIFT_MIN
-        private const val MIN_UP_PHASE_MS = 350L
-        private const val MIN_FULL_REP_MS = 800L
+        private const val MIN_UP_PHASE_MS = 500L    // was 350 — fase naik harus ≥500ms
+        private const val MIN_FULL_REP_MS = 1000L   // was 800 — total rep harus ≥1 detik
         private const val VIOLATION_THRESHOLD_MS = 220L
         private const val VIOLATION_RATIO_THRESHOLD = 0.24f
         private const val ACTIVE_MISSING_ARM_TOLERANCE_FRAMES = 5
@@ -58,6 +63,10 @@ class LateralRaiseRuleEngine(
     private var pathViolationMs = 0L
     private var symmetryViolationMs = 0L
     private var overRaiseViolationMs = 0L
+    // Latch "menghadap depan" — sekali terkonfirmasi N frame berturut-turut,
+    // pertahankan meskipun variasi pose lateral raise membuat shoulderDistance turun sesaat
+    private var facingFrontLatched = false
+    private var facingFrontConfirmFrames = 0
 
     // Sudut angkat tertinggi yang dicapai dalam siklus saat ini
     private var cycleMaxLiftAngle = 0f
@@ -102,7 +111,10 @@ class LateralRaiseRuleEngine(
         }
         activeMissingArmFrames = 0
 
-        if (metrics.shoulderDistance < FRONT_VIEW_SHOULDER_DISTANCE_MIN) {
+        // Cek orientasi dengan mekanisme latch — sekali terkonfirmasi menghadap depan,
+        // pertahankan meskipun shoulderDistance turun sesaat saat lateral raise
+        val isFront = updateFacingFrontLatch(metrics.shoulderDistance)
+        if (!isFront) {
             cancelCycle()
             return RuleResult(
                 isValid = false,
@@ -275,6 +287,45 @@ class LateralRaiseRuleEngine(
         cycleMaxLiftAngle = 0f
         requireFreshBottomBeforeNextCycle = false
         activeMissingArmFrames = 0
+        // Latch facing-front TIDAK direset antar repetisi — orang tetap menghadap depan
+        // Hanya direset jika full reset (sesi baru / cancel)
+        if (!keepBottomReady) {
+            facingFrontLatched = false
+            facingFrontConfirmFrames = 0
+        }
+    }
+
+    /**
+     * Memperbarui dan mengembalikan status "menghadap depan" dengan mekanisme latch.
+     * Mengembalikan true jika terkonfirmasi menghadap depan (atau latch masih aktif).
+     *
+     * Mencegah false positive "Hadapkan ke depan" saat lateral raise di posisi tertentu
+     * menyebabkan shoulderDistance turun sesaat di bawah threshold.
+     */
+    private fun updateFacingFrontLatch(shoulderDistance: Float): Boolean {
+        val clearlyFront = shoulderDistance >= FRONT_VIEW_SHOULDER_DISTANCE_MIN
+
+        if (clearlyFront) {
+            facingFrontConfirmFrames = (facingFrontConfirmFrames + 1).coerceAtMost(FRONT_VIEW_CONFIRM_FRAMES + 2)
+            if (facingFrontConfirmFrames >= FRONT_VIEW_CONFIRM_FRAMES) {
+                facingFrontLatched = true
+            }
+        } else {
+            facingFrontConfirmFrames = 0
+        }
+
+        if (facingFrontLatched) {
+            // Pertahankan latch KECUALI bahu benar-benar sangat sempit
+            val shoulderVeryNarrow = shoulderDistance < FRONT_VIEW_STRICT_SHOULDER_MIN
+            if (shoulderVeryNarrow) {
+                facingFrontLatched = false
+                facingFrontConfirmFrames = 0
+                return false
+            }
+            return true
+        }
+
+        return clearlyFront
     }
 
     private fun extractMetrics(keypoints: List<Keypoint>): RepMetrics? {
@@ -406,11 +457,18 @@ class LateralRaiseRuleEngine(
 
     private fun finishCycle(now: Long, keepBottomReady: Boolean): LateralRaiseFormError? {
         val fullRepDuration = now - cycleStartTimeMs
+
+        // Cek tempo berdasarkan total durasi rep
         if (cyclePeakTimeMs > 0L && fullRepDuration < MIN_FULL_REP_MS) {
             tempoViolationDetected = true
         }
 
+        // PENTING: determineCompletedViolation() HARUS dipanggil SEBELUM resetCycleState()
+        // karena resetCycleState() akan me-reset tempoViolationDetected ke false,
+        // sehingga hasil deteksi tempo akan hilang jika dipanggil sesudah reset.
         val error = determineCompletedViolation(fullRepDuration)
+
+        // Reset state SETELAH error ditentukan
         resetCycleState(keepBottomReady = keepBottomReady)
         requireFreshBottomBeforeNextCycle = !keepBottomReady
         return error
@@ -424,11 +482,13 @@ class LateralRaiseRuleEngine(
         if (!peakReached) {
             return LateralRaiseFormError.RANGE_TOO_LOW
         }
-        if (overRaiseViolationDetected || hasSignificantViolation(overRaiseViolationMs, fullRepDurationMs)) {
-            return LateralRaiseFormError.RANGE_TOO_HIGH
-        }
+        // Tempo dicek lebih awal dari over-raise agar feedback lebih relevan
+        // saat pengguna bergerak cepat sambil juga terlalu tinggi
         if (tempoViolationDetected) {
             return LateralRaiseFormError.TEMPO_TOO_FAST
+        }
+        if (overRaiseViolationDetected || hasSignificantViolation(overRaiseViolationMs, fullRepDurationMs)) {
+            return LateralRaiseFormError.RANGE_TOO_HIGH
         }
         return null
     }

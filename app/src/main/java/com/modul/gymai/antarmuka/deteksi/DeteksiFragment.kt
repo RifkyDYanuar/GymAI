@@ -1406,7 +1406,7 @@ class DeteksiFragment : Fragment() {
 
     private fun buildShoulderPressModelFeedback(ruleFeedback: String, isCorrect: Boolean): String {
         if (isCorrect) {
-            return "Gerakan benar, dorongan lurus ke atas dan postur stabil"
+            return "Gerakan benar, dorongan lurus ke atas, siku sejajar dengan bahu"
         }
 
         return when (ruleFeedback.trim()) {
@@ -2259,7 +2259,7 @@ class DeteksiFragment : Fragment() {
             "Gerakan benar, siku tetap stabil dan fleksi siku optimal" -> "Gerakan benar"
             "Gerakan benar, kedalaman squat cukup dan badan tetap stabil" -> "Gerakan benar"
             "Gerakan benar, kedalaman squat cukup, badan stabil, dan tempo terkontrol" -> "Gerakan benar"
-            "Gerakan benar, dorongan lurus ke atas dan postur stabil" -> "Gerakan benar"
+            "Gerakan benar, dorongan lurus ke atas, siku sejajar dengan bahu" -> "Gerakan benar, dorongan lurus ke atas, siku sejajar dengan bahu"
             "Gerakan benar, tangan sejajar bahu dan tempo terkontrol" -> "Gerakan benar"
             "Ulangi lateral raise dengan tangan sejajar bahu dan tubuh tetap stabil" -> "Ulangi lateral raise dengan tangan sejajar bahu dan tubuh tetap stabil"
             "Ulangi lateral raise dengan tangan sejajar bahu dan tempo lebih terkontrol" -> "Ulangi lateral raise dengan tangan sejajar bahu dan tempo lebih terkontrol"
@@ -2512,7 +2512,7 @@ class DeteksiFragment : Fragment() {
             ExerciseType.BICEP_CURL -> "Gerakan benar, siku tetap stabil dan fleksi siku optimal"
             ExerciseType.SQUAT -> "Gerakan benar, kedalaman squat cukup, badan stabil, dan tempo terkontrol"
             ExerciseType.LATERAL_RAISE -> "Gerakan benar, tangan sejajar bahu dan tempo terkontrol"
-            ExerciseType.SHOULDER_PRESS -> "Gerakan benar, dorongan lurus ke atas dan postur stabil"
+            ExerciseType.SHOULDER_PRESS -> "Gerakan benar, dorongan lurus ke atas, siku sejajar dengan bahu"
         }
     }
 

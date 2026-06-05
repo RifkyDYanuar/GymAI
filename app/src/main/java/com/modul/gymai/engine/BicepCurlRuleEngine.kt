@@ -9,21 +9,23 @@ import kotlin.math.abs
 class BicepCurlRuleEngine : ExerciseRuleEngine {
 
     companion object {
-        private const val MIN_CONF = 0.45f
-        private const val MIN_SHOULDER_CONF = 0.35f
+        // --- Confidence thresholds (dinaikkan untuk menekan jitter side-view) ---
+        private const val MIN_CONF = 0.55f              // was 0.45 — elbow/wrist harus lebih yakin
+        private const val MIN_SHOULDER_CONF = 0.45f     // was 0.35
         private const val CURL_START_THRESHOLD = 145f
         private const val ELBOW_PEAK_MIN = 35f
         private const val ELBOW_PEAK_MAX = 65f
         private const val ARM_EXTENDED_THRESHOLD = 155f
         private const val TORSO_STABILITY_THRESHOLD = 10f
-        private const val ELBOW_DRIFT_RATIO_THRESHOLD = 0.30f
-        private const val UPPER_ARM_SWING_THRESHOLD = 22f
+        // --- Violation thresholds (dilonggarkan agar jitter sesaat tidak dihitung) ---
+        private const val ELBOW_DRIFT_RATIO_THRESHOLD = 0.38f  // was 0.30 — toleransi lebih besar
+        private const val UPPER_ARM_SWING_THRESHOLD = 28f      // was 22 — jitter tidak langsung trigger
         private const val MIN_UP_PHASE_MS = 450L
         private const val MIN_FULL_REP_MS = 900L
         private const val ARM_SWITCH_SCORE_MARGIN = 0.95f
         private const val ARM_SWITCH_CONFIRM_FRAMES = 8
         private const val ARM_LOST_SCORE_THRESHOLD = 0.95f
-        private const val MAJOR_VIOLATION_THRESHOLD_MS = 250L
+        private const val MAJOR_VIOLATION_THRESHOLD_MS = 450L  // was 250 — butuh >450ms baru dihitung
         private const val MAJOR_VIOLATION_RATIO_THRESHOLD = 0.30f
         private const val READY_EXTENSION_FRAMES = 4
         private const val START_ELBOW_FLEX_DELTA = 12f
@@ -32,6 +34,12 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         private const val SIDE_VIEW_SHOULDER_RATIO_MAX = 0.20f
         private const val SIDE_VIEW_HIP_RATIO_MAX = 0.14f
         private const val SIDE_VIEW_ABSOLUTE_SHOULDER_MAX = 0.10f
+        // --- EMA smoothing untuk elbow (anti-jitter) ---
+        private const val ELBOW_EMA_ALPHA = 0.35f  // 0=sangat halus, 1=tidak ada smoothing
+        // --- Occlusion detection ---
+        // Jika confidence elbow/wrist di bawah ini, tangan dianggap tertutup (occluded).
+        // Keypoint tetap ada (17 titik utuh), tapi tidak dipakai untuk evaluasi.
+        private const val RELIABLE_CONF = 0.65f
     }
 
     private var cycleActive = false
@@ -54,6 +62,10 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
     private var readyReferenceWristX = 0f
     private var readyReferenceWristY = 0f
     private var readyArmSide: ArmSide? = null
+    // EMA (Exponential Moving Average) untuk posisi elbow — meredam jitter
+    private var smoothElbowX = -1f
+    private var smoothElbowY = -1f
+    private var smoothUpperArmAngle = -1f
 
     override fun validate(pose: PoseResult?): RuleResult {
         if (pose == null) {
@@ -107,8 +119,31 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         val elbow = trackedArm.elbow
         val wrist = trackedArm.wrist
 
-        val elbowAngle = AngleUtils.angleBetween(shoulder.x, shoulder.y, elbow.x, elbow.y, wrist.x, wrist.y)
-        val upperArmAngle = AngleUtils.verticalAngle(elbow.x, elbow.y, shoulder.x, shoulder.y)
+        // --- Deteksi oklusi: apakah tangan yang di-track sedang tertutup? ---
+        // Oklusi terjadi saat menghadap samping dan tangan sisi jauh terhalang tubuh.
+        // Keypoint tetap ADA (17 titik utuh di PoseResult), hanya evaluasi yang di-skip.
+        val isArmOccluded = elbow.confidence < RELIABLE_CONF || wrist.confidence < RELIABLE_CONF
+
+        // EMA smoothing: hanya update saat tangan terlihat jelas.
+        // Saat tertutup, nilai smooth di-freeze supaya angle tidak melompat akibat jitter.
+        if (!isArmOccluded) {
+            smoothElbowX = if (smoothElbowX < 0f) elbow.x else smoothElbowX + ELBOW_EMA_ALPHA * (elbow.x - smoothElbowX)
+            smoothElbowY = if (smoothElbowY < 0f) elbow.y else smoothElbowY + ELBOW_EMA_ALPHA * (elbow.y - smoothElbowY)
+            val rawUpperArmAngle = AngleUtils.verticalAngle(elbow.x, elbow.y, shoulder.x, shoulder.y)
+            smoothUpperArmAngle = if (smoothUpperArmAngle < 0f) rawUpperArmAngle
+                else smoothUpperArmAngle + ELBOW_EMA_ALPHA * (rawUpperArmAngle - smoothUpperArmAngle)
+        }
+        // Fallback: jika smooth belum pernah diisi (sesi baru), gunakan posisi raw
+        val effectiveElbowX = if (smoothElbowX >= 0f) smoothElbowX else elbow.x
+        val effectiveElbowY = if (smoothElbowY >= 0f) smoothElbowY else elbow.y
+        val effectiveUpperArmAngle = if (smoothUpperArmAngle >= 0f) smoothUpperArmAngle
+            else AngleUtils.verticalAngle(elbow.x, elbow.y, shoulder.x, shoulder.y)
+
+        // Hitung angle menggunakan posisi yang sudah dihaluskan (atau di-freeze)
+        val elbowAngle = AngleUtils.angleBetween(
+            shoulder.x, shoulder.y, effectiveElbowX, effectiveElbowY, wrist.x, wrist.y
+        )
+        val upperArmAngle = effectiveUpperArmAngle
 
         updateReadyState(trackedArm.side, elbowAngle, wrist)
 
@@ -126,16 +161,19 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         }
 
         val isTorsoStable = torsoAngle <= TORSO_STABILITY_THRESHOLD
-        val elbowDrift = if (cycleActive) {
-            val upperArmLength = AngleUtils.distance(shoulder.x, shoulder.y, elbow.x, elbow.y).coerceAtLeast(0.001f)
-            AngleUtils.distance(anchorElbowX, anchorElbowY, elbow.x, elbow.y) / upperArmLength
+        val elbowDrift = if (cycleActive && !isArmOccluded) {
+            // Gunakan posisi smooth untuk menghitung drift dari anchor
+            val upperArmLength = AngleUtils.distance(shoulder.x, shoulder.y, effectiveElbowX, effectiveElbowY).coerceAtLeast(0.001f)
+            AngleUtils.distance(anchorElbowX, anchorElbowY, effectiveElbowX, effectiveElbowY) / upperArmLength
         } else 0f
 
-        val elbowMovingNow = cycleActive && (
+        // Saat tangan tertutup (isArmOccluded): skip cek violation — jangan akumulasi waktu pelanggaran
+        // karena keypoint tidak reliable, bukan berarti gerakan salah.
+        val elbowMovingNow = cycleActive && !isArmOccluded && (
             elbowDrift > ELBOW_DRIFT_RATIO_THRESHOLD ||
                 abs(upperArmAngle - anchorUpperArmAngle) > UPPER_ARM_SWING_THRESHOLD
             )
-        val torsoMovingNow = cycleActive && !isTorsoStable
+        val torsoMovingNow = cycleActive && !isArmOccluded && !isTorsoStable
 
         if (cycleActive) {
             val dtMs = (now - cycleLastSampleTimeMs).coerceAtLeast(0L)
@@ -178,6 +216,7 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         }
 
         val liveFeedback = when {
+            isArmOccluded && cycleActive -> "Tahan posisi, lanjutkan gerakan"
             tempoViolationDetected -> "Tempo terlalu cepat, perlambat gerakan"
             elbowMovingNow -> "Jaga siku tetap diam di samping tubuh"
             torsoMovingNow -> "Jaga tubuh tetap tegak dan hindari ayunan badan"
@@ -276,9 +315,10 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         cycleStartTimeMs = now
         cyclePeakTimeMs = 0L
         cycleLastSampleTimeMs = now
-        anchorElbowX = elbow.x
-        anchorElbowY = elbow.y
-        anchorUpperArmAngle = upperArmAngle
+        // Gunakan posisi EMA (smooth) sebagai anchor agar tidak dari posisi jitter
+        anchorElbowX = smoothElbowX.takeIf { it >= 0f } ?: elbow.x
+        anchorElbowY = smoothElbowY.takeIf { it >= 0f } ?: elbow.y
+        anchorUpperArmAngle = smoothUpperArmAngle.takeIf { it >= 0f } ?: upperArmAngle
         totalMajorViolationMs = 0L
         elbowViolationMs = 0L
         torsoViolationMs = 0L
@@ -315,9 +355,9 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         cycleStartTimeMs = 0L
         cyclePeakTimeMs = 0L
         cycleLastSampleTimeMs = 0L
-        anchorElbowX = elbow.x
-        anchorElbowY = elbow.y
-        anchorUpperArmAngle = upperArmAngle
+        anchorElbowX = smoothElbowX.takeIf { it >= 0f } ?: elbow.x
+        anchorElbowY = smoothElbowY.takeIf { it >= 0f } ?: elbow.y
+        anchorUpperArmAngle = smoothUpperArmAngle.takeIf { it >= 0f } ?: upperArmAngle
         totalMajorViolationMs = 0L
         elbowViolationMs = 0L
         torsoViolationMs = 0L
@@ -561,6 +601,10 @@ class BicepCurlRuleEngine : ExerciseRuleEngine {
         pendingArmSide = null
         pendingArmFrames = 0
         lastResolvedArmSide = null
+        // Reset EMA state
+        smoothElbowX = -1f
+        smoothElbowY = -1f
+        smoothUpperArmAngle = -1f
         resetReadyState()
     }
 

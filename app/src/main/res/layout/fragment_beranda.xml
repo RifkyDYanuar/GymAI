@@ -25,6 +25,59 @@
                 android:paddingTop="48dp"
                 android:paddingBottom="20dp">
 
+                <!-- Logo Universitas Kuningan & Fakultas Ilmu Komputer -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="12dp">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:src="@drawable/uniku"
+                        android:scaleType="fitCenter"
+                        android:contentDescription="Logo Universitas Kuningan" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:paddingHorizontal="8dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Universitas Kuningan"
+                            android:textColor="#1A1A2E"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:gravity="center"
+                            android:fontFamily="@font/poppins" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Fakultas Ilmu Komputer"
+                            android:textColor="#888888"
+                            android:textSize="9sp"
+                            android:gravity="center"
+                            android:fontFamily="@font/poppins" />
+
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:src="@drawable/fkom"
+                        android:scaleType="fitCenter"
+                        android:contentDescription="Logo Fakultas Ilmu Komputer" />
+
+                </LinearLayout>
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

@@ -14,6 +14,11 @@ class ShoulderPressRuleEngine(
         private const val MIN_CONF = 0.45f
         private const val FRONT_VIEW_SHOULDER_DISTANCE_MIN = 0.10f
         private const val FRONT_VIEW_HIP_DISTANCE_MIN = 0.06f
+        // Setelah latch terkonfirmasi, hanya lepas latch jika bahu benar-benar sempit
+        // (indikasi tubuh memang berpaling, bukan sekadar shoulder press di posisi atas)
+        private const val FRONT_VIEW_STRICT_SHOULDER_MIN = 0.06f
+        // Jumlah frame berturut-turut untuk mengkonfirmasi "menghadap depan"
+        private const val FRONT_VIEW_CONFIRM_FRAMES = 3
         private const val READY_FRAMES = 4
         private const val READY_ELBOW_MIN = 78f
         private const val READY_ELBOW_MAX = 115f
@@ -61,6 +66,9 @@ class ShoulderPressRuleEngine(
     private var readyLatched = false
     private var peakReached = false
     private var tempoViolationDetected = false
+    // Tanda internal: tempo dilanggar tapi belum ditampilkan ke user
+    // Akan ditampilkan sebagai live feedback saat fase TURUN dimulai (bukan di momen puncak)
+    private var tempoViolatedInternal = false
     private var elbowLockoutViolationDetected = false
     private var elbowDropViolationDetected = false
     private var badRepAlreadyReported = false
@@ -73,6 +81,10 @@ class ShoulderPressRuleEngine(
     // Grace period setelah rep selesai: jangan tampilkan pesan posisi awal
     // saat tangan sedang dalam transisi turun kembali ke starting position
     private var postRepGraceFrames = 0
+    // Latch "menghadap depan" — sekali terkonfirmasi N frame berturut-turut,
+    // pertahankan meskipun shoulder press di posisi atas membuat shoulderDistance turun
+    private var facingFrontLatched = false
+    private var facingFrontConfirmFrames = 0
 
     override fun validate(pose: PoseResult?): RuleResult {
         if (pose == null || !pose.isValid()) {
@@ -203,29 +215,41 @@ class ShoulderPressRuleEngine(
             }
         }
 
-        val torsoStableNow = isTorsoStable(metrics)
-        val symmetricNow = isSymmetric(metrics)
         val topRangeReachedNow = isTopRange(metrics)
         val overheadReachedNow = topRangeReachedNow || isOverheadLockout(metrics)
 
         if (cycleActive) {
-            val dtMs = (now - cycleLastSampleTimeMs).coerceAtLeast(0L)
             cycleLastSampleTimeMs = now
             cycleMaxElbowAngle = maxOf(cycleMaxElbowAngle, metrics.avgElbowAngle)
-            accumulateViolations(dtMs, torsoStableNow, symmetricNow)
 
             if (now > cycleStartTimeMs && overheadReachedNow) {
                 peakReached = true
             }
-            if (isElbowLockedOut(metrics)) {
-                elbowLockoutViolationDetected = true
-            }
+            // ELBOW_LOCKOUT tidak dievaluasi — meluruskan siku di puncak shoulder press adalah hal wajar
             if (cyclePeakTimeMs == 0L && now > cycleStartTimeMs && overheadReachedNow) {
                 cyclePeakTimeMs = now
+                // Simpan dulu di flag internal — JANGAN langsung set tempoViolationDetected
+                // Feedback "Tempo terlalu cepat" akan ditampilkan saat fase TURUN dimulai
                 if (cyclePeakTimeMs - cycleStartTimeMs < MIN_UP_PHASE_MS) {
-                    tempoViolationDetected = true
+                    tempoViolatedInternal = true
                 }
             }
+
+            // Propagasi ke live feedback hanya saat TURUN (siku sudah mulai turun dari puncak)
+            // Threshold 8° untuk memastikan benar-benar sudah di fase turun, bukan noise di puncak
+            val descentStarted = peakReached && cycleMaxElbowAngle > 0f &&
+                metrics.avgElbowAngle < cycleMaxElbowAngle - 8f
+            if (descentStarted && !tempoViolationDetected) {
+                if (tempoViolatedInternal) {
+                    // Ascent terlalu cepat — tampilkan saat turun
+                    tempoViolationDetected = true
+                } else if (cyclePeakTimeMs > 0L && (now - cycleStartTimeMs) < MIN_FULL_REP_MS) {
+                    // Total rep heading too fast — deteksi live saat turun
+                    tempoViolationDetected = true
+                    tempoViolatedInternal = true
+                }
+            }
+
             // Deteksi siku jatuh terlalu rendah — hanya dicheck setelah peak tercapai
             // (fase turun kembali ke bawah). Siku hampir menempel sisi badan.
             if (isElbowCollapsedToSide(metrics) || (peakReached && isElbowDroppedTooLow(metrics))) {
@@ -234,7 +258,17 @@ class ShoulderPressRuleEngine(
         }
 
         if (cycleActive && !peakReached && isBackToBottom(metrics)) {
+            // Cek tempo terlebih dahulu — gerakan terlalu cepat bisa menyebabkan
+            // peak terlewat dalam satu frame sebelum kembali ke bawah
+            val fullRepDurationSoFar = now - cycleStartTimeMs
+            if (fullRepDurationSoFar < MIN_FULL_REP_MS &&
+                (cyclePeakTimeMs > 0L || cycleMaxElbowAngle >= ELBOW_PEAK_MIN)) {
+                // Tempo terlalu cepat: peak terekam langsung, ATAU siku sudah naik
+                // tinggi (>= ELBOW_PEAK_MIN) tapi frame puncak terlewat karena gerakan kilat
+                tempoViolationDetected = true
+            }
             val completedViolation = when {
+                tempoViolationDetected -> ShoulderPressFormError.TEMPO_TOO_FAST
                 elbowDropViolationDetected -> ShoulderPressFormError.ELBOW_DROP
                 cycleMaxElbowAngle >= START_ELBOW_MIN -> ShoulderPressFormError.RANGE_INCOMPLETE
                 else -> null
@@ -309,7 +343,7 @@ class ShoulderPressRuleEngine(
             lastCompletedWithElbowDrop = completedViolation == ShoulderPressFormError.ELBOW_DROP
             val finalFeedback = buildFeedback(
                 error = completedViolation,
-                defaultMessage = "Gerakan benar, dorongan lurus ke atas dan postur stabil"
+                defaultMessage = "Gerakan benar, dorongan lurus ke atas, siku sejajar dengan bahu"
             )
             val repStatus = if (completedViolation == null) BicepRepStatus.REP_GOOD else BicepRepStatus.REP_BAD
             val shouldCountRep = completedViolation == null
@@ -335,12 +369,8 @@ class ShoulderPressRuleEngine(
 
         val liveFeedback = when {
             tempoViolationDetected -> "Tempo terlalu cepat, perlambat gerakan"
-            elbowLockoutViolationDetected -> "Jangan luruskan siku sepenuhnya"
             elbowDropViolationDetected -> "Jangan turunkan siku terlalu rendah, jaga setinggi bahu"
             returnHoldStartTimeMs > 0L -> "Tahan siku sejajar bahu sebentar"
-            !torsoStableNow -> "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil"
-            !symmetricNow -> "Jaga dorongan kedua lengan tetap simetris"
-            cycleActive && !peakReached -> "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil"
             cycleActive -> "Dorong beban ke atas dengan kontrol"
             else -> "Dumbel di atas bahu, siap dorong ke atas"
         }
@@ -373,6 +403,7 @@ class ShoulderPressRuleEngine(
         readyLatched = keepReady
         peakReached = false
         tempoViolationDetected = false
+        tempoViolatedInternal = false
         elbowLockoutViolationDetected = false
         elbowDropViolationDetected = false
         lastCompletedWithElbowDrop = false
@@ -384,6 +415,12 @@ class ShoulderPressRuleEngine(
         // Jika rep baru saja selesai, beri grace 12 frame agar pesan
         // "Letakkan dumbel di atas bahu" tidak muncul saat tangan transisi turun
         postRepGraceFrames = if (keepReady) POST_REP_GRACE_FRAMES else 0
+        // Latch facing-front TIDAK direset saat antar repetisi — orang tetap menghadap depan
+        // Hanya direset jika keepReady=false (sesi baru / cancel)
+        if (!keepReady) {
+            facingFrontLatched = false
+            facingFrontConfirmFrames = 0
+        }
     }
 
     private fun extractMetrics(keypoints: List<Keypoint>): RepMetrics? {
@@ -513,8 +550,33 @@ class ShoulderPressRuleEngine(
     }
 
     private fun isFacingFront(metrics: RepMetrics): Boolean {
-        return metrics.shoulderDistance >= FRONT_VIEW_SHOULDER_DISTANCE_MIN &&
-            (metrics.hipDistance >= FRONT_VIEW_HIP_DISTANCE_MIN || metrics.shoulderDistance >= FRONT_VIEW_SHOULDER_DISTANCE_MIN * 1.2f)
+        val clearlyFront = metrics.shoulderDistance >= FRONT_VIEW_SHOULDER_DISTANCE_MIN &&
+            (metrics.hipDistance >= FRONT_VIEW_HIP_DISTANCE_MIN ||
+                metrics.shoulderDistance >= FRONT_VIEW_SHOULDER_DISTANCE_MIN * 1.2f)
+
+        if (clearlyFront) {
+            // Akumulasi frame konfirmasi — butuh FRONT_VIEW_CONFIRM_FRAMES berturut-turut
+            facingFrontConfirmFrames = (facingFrontConfirmFrames + 1).coerceAtMost(FRONT_VIEW_CONFIRM_FRAMES + 2)
+            if (facingFrontConfirmFrames >= FRONT_VIEW_CONFIRM_FRAMES) {
+                facingFrontLatched = true  // Terkunci: orang menghadap depan
+            }
+        } else {
+            facingFrontConfirmFrames = 0  // Reset counter jika tidak terdeteksi
+        }
+
+        if (facingFrontLatched) {
+            // Pertahankan latch KECUALI bahu benar-benar sangat sempit
+            // (bukti kuat orang sudah berpaling — bukan sekadar shoulder press di atas)
+            val shoulderVeryNarrow = metrics.shoulderDistance < FRONT_VIEW_STRICT_SHOULDER_MIN
+            if (shoulderVeryNarrow) {
+                facingFrontLatched = false  // Lepas latch
+                facingFrontConfirmFrames = 0
+                return false
+            }
+            return true  // Masih dianggap menghadap depan
+        }
+
+        return clearlyFront
     }
 
     private fun isReadyStartPosition(metrics: RepMetrics): Boolean {
@@ -542,8 +604,13 @@ class ShoulderPressRuleEngine(
         readyLatched = true
         peakReached = false
         tempoViolationDetected = false
+        tempoViolatedInternal = false
         elbowLockoutViolationDetected = false
         elbowDropViolationDetected = false
+        // Reset per siklus: setiap rep baru berhak mendapat feedback TTS
+        // Tanpa ini, rep cepat berulang menyebabkan badRepAlreadyReported tetap true
+        // sehingga repCompleted = false dan TTS tidak pernah bicara setelah rep pertama
+        badRepAlreadyReported = false
         anchorTorsoAngle = metrics.torsoAngle
         torsoViolationMs = 0L
         symmetryViolationMs = 0L
@@ -570,15 +637,14 @@ class ShoulderPressRuleEngine(
 
     private fun determineImmediateReturnViolation(now: Long, metrics: RepMetrics): ShoulderPressFormError? {
         val fullRepDuration = now - cycleStartTimeMs
+        // Set tempoViolationDetected di sini juga agar determineCompletedViolation konsisten
         if (cyclePeakTimeMs > 0L && fullRepDuration < MIN_FULL_REP_MS) {
-            return ShoulderPressFormError.TEMPO_TOO_FAST
+            tempoViolationDetected = true
         }
         return when {
-            elbowLockoutViolationDetected -> ShoulderPressFormError.ELBOW_LOCKOUT
+            tempoViolationDetected -> ShoulderPressFormError.TEMPO_TOO_FAST
             elbowDropViolationDetected -> ShoulderPressFormError.ELBOW_DROP
             !isSafeReturnPosition(metrics) -> ShoulderPressFormError.ELBOW_DROP
-            hasSignificantViolation(torsoViolationMs, fullRepDuration) -> ShoulderPressFormError.TORSO_UNSTABLE
-            hasSignificantViolation(symmetryViolationMs, fullRepDuration) -> ShoulderPressFormError.ASYMMETRIC
             else -> null
         }
     }
@@ -590,17 +656,8 @@ class ShoulderPressRuleEngine(
         if (!peakReached) {
             return ShoulderPressFormError.RANGE_INCOMPLETE
         }
-        if (elbowLockoutViolationDetected) {
-            return ShoulderPressFormError.ELBOW_LOCKOUT
-        }
         if (elbowDropViolationDetected) {
             return ShoulderPressFormError.ELBOW_DROP
-        }
-        if (hasSignificantViolation(torsoViolationMs, fullRepDurationMs)) {
-            return ShoulderPressFormError.TORSO_UNSTABLE
-        }
-        if (hasSignificantViolation(symmetryViolationMs, fullRepDurationMs)) {
-            return ShoulderPressFormError.ASYMMETRIC
         }
         return null
     }
@@ -688,12 +745,13 @@ class ShoulderPressRuleEngine(
 
     private fun buildFeedback(error: ShoulderPressFormError?, defaultMessage: String): String {
         return when (error) {
-            ShoulderPressFormError.RANGE_INCOMPLETE,
-            ShoulderPressFormError.TORSO_UNSTABLE -> "Dorong beban sampai hampir lurus dan jaga punggung tetap stabil"
-            ShoulderPressFormError.ELBOW_LOCKOUT -> "Jangan luruskan siku sepenuhnya"
+            ShoulderPressFormError.RANGE_INCOMPLETE -> "Dorong beban sampai hampir lurus ke atas"
             ShoulderPressFormError.ELBOW_DROP -> "Jangan turunkan siku terlalu rendah, jaga setinggi bahu"
-            ShoulderPressFormError.ASYMMETRIC -> "Jaga dorongan kedua lengan tetap simetris"
             ShoulderPressFormError.TEMPO_TOO_FAST -> "Tempo terlalu cepat, perlambat gerakan"
+            // Tipe berikut tidak aktif tapi dipertahankan di enum untuk kompatibilitas
+            ShoulderPressFormError.TORSO_UNSTABLE -> "Jaga punggung tetap stabil"
+            ShoulderPressFormError.ELBOW_LOCKOUT -> "Jangan luruskan siku sepenuhnya"
+            ShoulderPressFormError.ASYMMETRIC -> "Jaga dorongan kedua lengan tetap simetris"
             null -> defaultMessage
         }
     }
